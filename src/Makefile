@@ -1,35 +1,26 @@
 TARGET = parser
-OBJECT = parser.tab.c parser.tab.o lex.yy.c alloc.o functions.o semanticAnalysis.o symbolTable.o
-OUTPUT = parser.output parser.tab.h
-CC = gcc -g
+OBJECT = parser.cc parser.o lexer.cc lexer.o print.o
+OUTPUT = parser.output parser.hh
+
+CC = g++ -g -std=c++17 -Wall -Wextra -Wno-unused-result
 LEX = flex
 YACC = bison -v
 YACCFLAG = -d
 LIBS = -lfl 
 
-parser: parser.tab.o alloc.o functions.o symbolTable.o semanticAnalysis.o 
-	$(CC) -o $(TARGET) parser.tab.o alloc.o functions.o symbolTable.o semanticAnalysis.o $(LIBS)
+parser: parser.o lexer.o print.o
+	$(CC) -o $@ $^ $(LIBS)
 
-parser.tab.o: parser.tab.c lex.yy.c alloc.o functions.c symbolTable.o semanticAnalysis.o
-	$(CC) -c parser.tab.c
-    
-semanticAnalysis.o: semanticAnalysis.c symbolTable.o
-	$(CC) -c semanticAnalysis.c
+%.o: %.cc
+	$(CC) -c -o $@ $<
 
-symbolTable.o: symbolTable.c
-	$(CC) -c symbolTable.c
+lexer.cc: lexer.ll parser.hh header.hh
+	$(LEX) -o $@ $<
 
-lex.yy.c: lexer3.l
-	$(LEX) lexer3.l
+parser.cc: parser.yy header.hh
+	$(YACC) $(YACCFLAG) -o $@ $<
 
-parser.tab.c: parser.y 
-	$(YACC) $(YACCFLAG) parser.y
-
-alloc.o: alloc.c
-	$(CC) -c alloc.c
-	
-functions.o: functions.c
-	$(CC) -c functions.c
+parser.hh: parser.cc
 
 clean:
 	rm -f $(TARGET) $(OBJECT) $(OUTPUT)
