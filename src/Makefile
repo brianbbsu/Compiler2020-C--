@@ -14,7 +14,7 @@ parser: parser.o lexer.o print.o symbolTable.o
 %.o: %.cc
 	$(CC) -c -o $@ $<
 
-lexer.cc: lexer.ll parser.hh header.hh
+lexer.cc: lexer.l parser.hh header.hh
 	$(LEX) -o $@ $<
 
 parser.cc: parser.yy header.hh
