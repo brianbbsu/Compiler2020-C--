@@ -605,6 +605,7 @@ unary_op  : OP_PLUS { $$ = makeExprNode(UNARY_OPERATION, UNARY_OP_POSITIVE); }
 namespace yy {
   void parser::error (const std::string &msg) {
     std::cerr << msg << std::endl;
+    exit(1);
   }
 } // namespace yy
 
