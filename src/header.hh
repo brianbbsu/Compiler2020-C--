@@ -125,16 +125,12 @@ struct AST {
   AST_TYPE nodeType;
   DATA_TYPE dataType;
   int linenumber;
-  AST *parent;
   std::vector<AST *> children;
   std::variant<IdentifierSemanticValue, STMTSemanticValue, DECLSemanticValue,
                EXPRSemanticValue, Const>
       semanticValue;
   AST(AST_TYPE _nodeType = NUL_NODE)
-      : nodeType(_nodeType),
-        dataType(NONE_TYPE),
-        linenumber(lineno),
-        parent(nullptr) {}
+      : nodeType(_nodeType), dataType(NONE_TYPE), linenumber(lineno) {}
 };
 
 #endif  // __HEADER_HH__

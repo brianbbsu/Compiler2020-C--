@@ -2,14 +2,11 @@
 
 #include <cassert>
 
-SymbolTable::SymbolTable() { resetSymbolTable(); }
+SymbolTable::SymbolTable() : currentLevel(-1) { resetSymbolTable(); }
 
 void SymbolTable::resetSymbolTable() {
-  currentLevel = -1;  // reset level
-  table.clear();
-  while (!scopeModifiedStack.empty())
-    scopeModifiedStack.pop();  // pop until stack empty
-  openScope();                 // open global scope
+  while (currentLevel >= 0) closeScope();
+  openScope();  // open global scope
   // add builtin type and functions
   addTypeSymbol("int", TypeDescriptor{SCALAR_TYPE_DESCRIPTOR, INT_TYPE});
   addTypeSymbol("float", TypeDescriptor{SCALAR_TYPE_DESCRIPTOR, FLOAT_TYPE});
@@ -27,7 +24,10 @@ void SymbolTable::openScope() {
 void SymbolTable::closeScope() {
   assert(currentLevel >= 0);
   currentLevel -= 1;
-  for (const auto &ptr : scopeModifiedStack.top()) ptr->pop();
+  for (const auto &ptr : scopeModifiedStack.top()) {
+    delete ptr->top();
+    ptr->pop();
+  }
   scopeModifiedStack.pop();
 }
 
