@@ -10,6 +10,7 @@
 
   #include "header.hh"
   #include "print.hh"
+  #include "semanticAnalysis.hh"
 }
 
 %code {
@@ -604,7 +605,7 @@ unary_op  : OP_PLUS { $$ = makeExprNode(UNARY_OPERATION, UNARY_OP_POSITIVE); }
 
 namespace yy {
   void parser::error (const std::string &msg) {
-    std::cerr << msg << std::endl;
+    std::cerr << "Line #" << lineno << ": " << msg << std::endl;
     exit(1);
   }
 } // namespace yy
@@ -616,6 +617,11 @@ int main(int argc, char *argv[]) {
   assert(prog != nullptr);
   ASTPrinter printer(prog);
   printer.print();
-  std::cout << "Parsing completed. No errors found.\n";
+  SemanticAnalysis semanticAnalysis(prog);
+  semanticAnalysis.runAnalysis();
+  if (!semanticAnalysis.anyerror)
+    std::cout << "Parsing completed. No errors found.\n";
+  else
+    return 1;
   return 0;
 }

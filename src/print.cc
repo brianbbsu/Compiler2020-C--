@@ -26,8 +26,7 @@ void ASTPrinter::printSubtree(AST *node, int nodeID) {
   nextNodeID += node->children.size();
   for (int i = 0; i < (int)node->children.size(); ++i)
     printGVNode(node->children[i], childrenIDStart + i);
-  for (int i = 0; i < (int)node->children.size(); ++i)
-    printGVEdge(nodeID, childrenIDStart + i);
+  for (int i = 0; i < (int)node->children.size(); ++i) printGVEdge(nodeID, childrenIDStart + i);
   for (int i = 0; i < (int)node->children.size(); ++i)
     printSubtree(node->children[i], childrenIDStart + i);
 }
@@ -38,6 +37,13 @@ void ASTPrinter::printGVEdge(int fromNodeID, int toNodeID) {
 
 void ASTPrinter::printGVNode(AST *node, int nodeID) {
   os << "node" << nodeID << " [label =\"";
-  os << AST_TYPE_str[(int)node->nodeType];
+  os << AST_TYPE_str[(size_t)node->nodeType];
+  switch (node->nodeType) {
+    case DECLARATION_NODE:
+      os << " " << DECL_KIND_str[(size_t)std::get<DECLSemanticValue>(node->semanticValue).kind];
+      break;
+    default:
+      break;
+  }
   os << "\"]\n";
 }

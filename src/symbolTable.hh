@@ -52,8 +52,7 @@ class SymbolTable {
   std::unordered_map<std::string, entryStack> table;
   vstack<std::vector<entryStack *>> scopeModifiedStack;
 
-  SymbolTableEntry *_addSymbol(const std::string &name,
-                               SymbolTableEntry *entry);
+  SymbolTableEntry *_addSymbol(const std::string &name, SymbolTableEntry *entry);
 
  public:
   SymbolTable();
@@ -62,11 +61,9 @@ class SymbolTable {
   void closeScope();
   bool declaredLocally(const std::string &name);
   SymbolTableEntry *getSymbol(const std::string &name);
-  SymbolTableEntry *addVariableSymbol(const std::string &name,
-                                      TypeDescriptor type);
+  SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type);
   SymbolTableEntry *addTypeSymbol(const std::string &name, TypeDescriptor type);
-  SymbolTableEntry *addFunctionSymbol(const std::string &name,
-                                      FunctionSignature signature);
+  SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature);
 };
 
 #endif  // ! __SYMBOL_TABLE_HH__

@@ -2,7 +2,7 @@
 
 #include <cassert>
 
-SymbolTable::SymbolTable() : currentLevel(-1) { resetSymbolTable(); }
+SymbolTable::SymbolTable() : currentLevel(-1) {}
 
 void SymbolTable::resetSymbolTable() {
   while (currentLevel >= 0) closeScope();
@@ -33,8 +33,7 @@ void SymbolTable::closeScope() {
 
 bool SymbolTable::declaredLocally(const std::string &name) {
   auto ite = table.find(name);
-  return ite != table.end() && ite->second.size() &&
-         ite->second.top()->level == currentLevel;
+  return ite != table.end() && ite->second.size() && ite->second.top()->level == currentLevel;
 }
 
 SymbolTableEntry *SymbolTable::getSymbol(const std::string &name) {
@@ -45,8 +44,7 @@ SymbolTableEntry *SymbolTable::getSymbol(const std::string &name) {
     return ite->second.top();
 }
 
-SymbolTableEntry *SymbolTable::_addSymbol(const std::string &name,
-                                          SymbolTableEntry *entry) {
+SymbolTableEntry *SymbolTable::_addSymbol(const std::string &name, SymbolTableEntry *entry) {
   auto &stk = table[name];
   // The name should not be declared in this scope
   assert(!stk.size() || stk.top()->level < entry->level);
@@ -55,23 +53,18 @@ SymbolTableEntry *SymbolTable::_addSymbol(const std::string &name,
   return entry;
 }
 
-SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name,
-                                                 TypeDescriptor type) {
-  SymbolTableEntry *entry =
-      new SymbolTableEntry{currentLevel, VARIABLE_SYMBOL, std::move(type)};
+SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name, TypeDescriptor type) {
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, VARIABLE_SYMBOL, std::move(type)};
   return _addSymbol(name, entry);
 }
 
-SymbolTableEntry *SymbolTable::addTypeSymbol(const std::string &name,
-                                             TypeDescriptor type) {
-  SymbolTableEntry *entry =
-      new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(type)};
+SymbolTableEntry *SymbolTable::addTypeSymbol(const std::string &name, TypeDescriptor type) {
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(type)};
   return _addSymbol(name, entry);
 }
 
 SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature) {
-  SymbolTableEntry *entry =
-      new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(signature)};
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(signature)};
   return _addSymbol(name, entry);
 }
