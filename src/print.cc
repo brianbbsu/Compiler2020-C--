@@ -42,6 +42,13 @@ void ASTPrinter::printGVNode(AST *node, int nodeID) {
     case DECLARATION_NODE:
       os << " " << DECL_KIND_str[(size_t)std::get<DECLSemanticValue>(node->semanticValue).kind];
       break;
+    case STMT_NODE:
+      os << " " << STMT_KIND_str[(size_t)std::get<STMTSemanticValue>(node->semanticValue).kind];
+      break;
+    case IDENTIFIER_NODE:
+      os << " '" << std::get<IdentifierSemanticValue>(node->semanticValue).identifierName << "' "
+         << IDENTIFIER_KIND_str[(size_t)std::get<IdentifierSemanticValue>(node->semanticValue).kind];
+      break;
     default:
       break;
   }
