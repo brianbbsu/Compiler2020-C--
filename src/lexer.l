@@ -19,6 +19,7 @@ digit           [0-9]
 kwInt           "int"
 kwFloat         "float"
 kwVoid          "void"
+kwEnum          "enum"
 kwIf            "if"
 kwElse          "else"
 kwWhile         "while"
@@ -67,10 +68,11 @@ error            .
                             lineno++;
                         i++;
                     }
-                }	
+                }
 {kwInt}         return yy::parser::make_INT();
 {kwFloat}       return yy::parser::make_FLOAT();
 {kwVoid}		return yy::parser::make_VOID();
+{kwEnum}        return yy::parser::make_ENUM();
 {kwIf}          return yy::parser::make_IF();
 {kwElse}        return yy::parser::make_ELSE();
 {kwWhile}       return yy::parser::make_WHILE();

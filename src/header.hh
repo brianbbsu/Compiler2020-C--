@@ -78,15 +78,16 @@ enum STMT_KIND {
 
 enum EXPR_KIND { BINARY_OPERATION, UNARY_OPERATION };
 
-enum DECL_KIND { VARIABLE_DECL, TYPE_DECL, FUNCTION_DECL, FUNCTION_PARAMETER_DECL };
+enum DECL_KIND { VARIABLE_DECL, TYPE_DECL, ENUM_DECL, FUNCTION_DECL, FUNCTION_PARAMETER_DECL };
 
-const std::string DECL_KIND_str[] = {"VARIABLE_DECL", "TYPE_DECL", "FUNCTION_DECL",
+const std::string DECL_KIND_str[] = {"VARIABLE_DECL", "TYPE_DECL", "ENUM_DECL", "FUNCTION_DECL",
                                      "FUNCTION_PARAMETER_DECL"};
 
 enum AST_TYPE {
   PROGRAM_NODE,
   DECLARATION_NODE,
   IDENTIFIER_NODE,
+  ENUM_NODE,
   PARAM_LIST_NODE,
   NUL_NODE,
   BLOCK_NODE,
@@ -102,6 +103,7 @@ enum AST_TYPE {
 const std::string AST_TYPE_str[] = {"PROGRAM_NODE",
                                     "DECLARATION_NODE",
                                     "IDENTIFIER_NODE",
+                                    "ENUM_NODE",
                                     "PARAM_LIST_NODE",
                                     "NUL_NODE",
                                     "BLOCK_NODE",

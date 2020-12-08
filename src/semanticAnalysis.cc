@@ -41,6 +41,9 @@ void SemanticAnalysis::processVariableDeclListNode(AST *variableDeclListNode) {
       case TYPE_DECL:
         // TODO:
         break;
+      case ENUM_DECL:
+        // TODO:
+        break;
       case FUNCTION_DECL:
         // TODO:
         break;

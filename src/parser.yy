@@ -89,6 +89,7 @@
   VOID "void"
   INT "int"
   FLOAT "float"
+  ENUM "enum"
   IF "if"
   ELSE "else"
   WHILE "while"
@@ -126,13 +127,13 @@
 %token <Const>CONST "constant"
 
 %nterm <AST*> program func_def non_global_block func_body type param expr_null expr
-%nterm <AST*> func_decl type_decl var_decl decl cexpr mcexpr cfactor relop_expr init_id
-%nterm <AST*> stmt test assign_expr_list relop_expr_list var_ref assign_expr rel_op
-%nterm <AST*> relop_term relop_factor add_op mul_op term factor unary_op
+%nterm <AST*> func_decl type_decl var_decl decl cexpr relop_expr init_id
+%nterm <AST*> stmt test assign_expr_list relop_expr_list var_ref assign_expr rel_op enum_type
+%nterm <AST*> relop_term relop_factor add_op mul_op term factor unary_op enum_type_def enum_type_ref
 
 %nterm <std::vector<AST*>> global_block decl_list stmt_list param_list type_list
 %nterm <std::vector<AST*>> func_head_with_param_name func_head_without_param func_head_with_only_type
-%nterm <std::vector<AST*>> dim_fn id_list init_id_list dim_decl nonempty_assign_expr_list
+%nterm <std::vector<AST*>> dim_fn enum_def_list id_list init_id_list dim_decl nonempty_assign_expr_list
 %nterm <std::vector<AST*>> nonempty_relop_expr_list dim_list
 
 %start program
@@ -263,7 +264,7 @@ dim_fn  : MK_LB expr_null MK_RB { $$.push_back($2); }
             }
 		    ;
 
-expr_null : expr 
+expr_null : expr
           | %empty { $$ = new AST(NUL_NODE); }
           ;
 
@@ -286,6 +287,11 @@ type_decl : TYPEDEF type id_list MK_SEMICOLON
                 $$ = makeDeclNode(TYPE_DECL);
                 makeChild($$, $3);
                 $$->children.insert($$->children.begin(), $2);
+              }
+          | enum_type_def MK_SEMICOLON
+              {
+                $$ = makeDeclNode(ENUM_DECL);
+                makeChild($$, $1);
               }
           ;
 
@@ -318,11 +324,69 @@ func_decl : func_head_with_param_name MK_SEMICOLON
 type  : INT { $$ = makeIDNode("int", NORMAL_ID); }
       | FLOAT { $$ = makeIDNode("float", NORMAL_ID); }
       | VOID { $$ = makeIDNode("void", NORMAL_ID); }
+      | enum_type
       | ID { $$ = makeIDNode($1, NORMAL_ID); }
       ;
 
+enum_type : enum_type_ref
+          | enum_type_def
+          ;
+
+enum_type_ref : ENUM ID
+                  {
+                    $$ = new AST(ENUM_NODE);
+                    makeChild($$, makeIDNode($2, NORMAL_ID));
+                  }
+              ;
+
+enum_type_def : ENUM ID MK_LBRACE enum_def_list MK_RBRACE
+                  {
+                    $$ = new AST(ENUM_NODE);
+                    makeChild($$, $4);
+                    $$->children.insert($$->children.begin(), makeIDNode($2, NORMAL_ID));
+                  }
+              | ENUM ID MK_LBRACE enum_def_list MK_COMMA MK_RBRACE
+                  {
+                    $$ = new AST(ENUM_NODE);
+                    makeChild($$, $4);
+                    $$->children.insert($$->children.begin(), makeIDNode($2, NORMAL_ID));
+                  }
+              | ENUM MK_LBRACE enum_def_list MK_RBRACE
+                  {
+                    $$ = new AST(ENUM_NODE);
+                    makeChild($$, $3);
+                    $$->children.insert($$->children.begin(), new AST(NUL_NODE));
+                  }
+              | ENUM MK_LBRACE enum_def_list MK_COMMA MK_RBRACE
+                  {
+                    $$ = new AST(ENUM_NODE);
+                    makeChild($$, $3);
+                    $$->children.insert($$->children.begin(), new AST(NUL_NODE));
+                  }
+              ;
+
+enum_def_list : ID
+                  {
+                    $$.push_back(makeIDNode($1, NORMAL_ID));
+                  }
+              | ID OP_ASSIGN cexpr
+                  {
+                    $$.push_back(makeChild(makeIDNode($1, WITH_INIT_ID), $3));
+                  }
+              | enum_def_list MK_COMMA ID
+                  {
+                    $$ = std::move($1);
+                    $$.push_back(makeIDNode($3, NORMAL_ID));
+                  }
+              | enum_def_list MK_COMMA ID OP_ASSIGN cexpr
+                  {
+                    $$ = std::move($1);
+                    $$.push_back(makeChild(makeIDNode($3, WITH_INIT_ID), $5));
+                  }
+              ;
+
 id_list : ID { $$.push_back(makeIDNode($1, NORMAL_ID)); }
-        | ID dim_decl 
+        | ID dim_decl
             {
                 $$.push_back(makeChild(makeIDNode($1, ARRAY_ID), $2));
             }
@@ -346,39 +410,8 @@ dim_decl	: MK_LB cexpr MK_RB { $$.push_back($2); }
               }
           ;
 
-cexpr : cexpr OP_PLUS mcexpr
-          {
-            $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_ADD);
-            makeFamily($$, 2, $1, $3);
-          }
-      | cexpr OP_MINUS mcexpr
-          {
-            $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_SUB);
-            makeFamily($$, 2, $1, $3);
-          }
-      | mcexpr
+cexpr : relop_expr
       ;
-
-mcexpr  : mcexpr OP_TIMES cfactor
-            {
-              $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_MUL);
-              makeFamily($$, 2, $1, $3);
-            }
-        | mcexpr OP_DIVIDE cfactor
-            {
-              $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_DIV);
-              makeFamily($$, 2, $1, $3);
-            }
-        | cfactor
-        ;
-
-cfactor : CONST
-            {
-              $$ = new AST(CONST_VALUE_NODE);
-              $$->semanticValue = $1;
-            }
-        | MK_LPAREN cexpr MK_RPAREN { $$ = $2; }
-        ;
 
 init_id_list  : init_id { $$.push_back($1); }
               | init_id_list MK_COMMA init_id
@@ -603,9 +636,11 @@ unary_op  : OP_PLUS { $$ = makeExprNode(UNARY_OPERATION, UNARY_OP_POSITIVE); }
 
 %%
 
+extern char *yytext;
+
 namespace yy {
   void parser::error (const std::string &msg) {
-    std::cerr << "Line #" << lineno << ": " << msg << std::endl;
+    std::cerr << "Line #" << lineno << ": " << msg << ", next token: " << yytext << std::endl;
     exit(1);
   }
 } // namespace yy
@@ -613,6 +648,7 @@ namespace yy {
 int main(int argc, char *argv[]) {
   if (argc > 1) freopen(argv[1], "r", stdin);
   yy::parser parse;
+  // parse.set_debug_level(1);
   parse();
   assert(prog != nullptr);
   ASTPrinter printer(prog);
