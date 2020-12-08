@@ -549,7 +549,7 @@ mul_op  : OP_TIMES { $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_MUL); }
         | OP_DIVIDE { $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_DIV); }
         ;
 
-factor  : MK_LPAREN relop_expr MK_RPAREN {$$ = $2; }
+factor  : MK_LPAREN relop_expr MK_RPAREN { $$ = $2; }
         | unary_op MK_LPAREN relop_expr MK_RPAREN
             {
               $$ = makeChild($1, $3);
@@ -619,7 +619,7 @@ int main(int argc, char *argv[]) {
   printer.print();
   SemanticAnalysis semanticAnalysis(prog);
   semanticAnalysis.runAnalysis();
-  if (!semanticAnalysis.anyerror)
+  if (!semanticAnalysis.anySemanticError)
     std::cout << "Parsing completed. No errors found.\n";
   else
     return 1;

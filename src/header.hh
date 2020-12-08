@@ -19,8 +19,8 @@ void printHelper(std::ostream &os, const T &arg, const Args &... args) {
 
 #define raiseError(...)                                                               \
   printHelper(std::cerr, "Internal Error: ", __FILE__, ": ", "Line ", __LINE__, ": ", \
-              __PRETTY_FUNCTION__, ": ", __VA_ARGS__);                                \
-  exit(1);
+              __PRETTY_FUNCTION__, ": ", __VA_ARGS__),                                \
+      exit(1)
 
 #define MAX_ARRAY_DIMENSION 10
 
@@ -37,7 +37,7 @@ enum DATA_TYPE {
 };
 
 const std::string DATA_TYPE_str[] = {"int",          "float",          "void",
-                                     "INT_PTR_TYPE", "FLOAT_PTR_TYPE", "CONST_STRING_TYPE",
+                                     "INT_PTR_TYPE", "FLOAT_PTR_TYPE", "const string",
                                      "NONE_TYPE",    "ERROR_TYPE"};
 
 enum IDENTIFIER_KIND {
@@ -45,6 +45,8 @@ enum IDENTIFIER_KIND {
   ARRAY_ID,      // ID_NODE->child = dim
   WITH_INIT_ID,  // ID_NODE->child = initial value
 };
+
+const std::string IDENTIFIER_KIND_str[] = {"NORMAL_ID", "ARRAY_ID", "WITH_INIT_ID"};
 
 enum BINARY_OPERATOR {
   BINARY_OP_ADD,
@@ -61,11 +63,24 @@ enum BINARY_OPERATOR {
   BINARY_OP_OR
 };
 
-enum UNARY_OPERATOR { UNARY_OP_POSITIVE, UNARY_OP_NEGATIVE, UNARY_OP_LOGICAL_NEGATION };
+const std::string BINARY_OPERATOR_str[] = {"+",  "-",  "*", "/", "==", ">=",
+                                           "<=", "!=", ">", "<", "&&", "||"};
+
+enum UNARY_OPERATOR {
+  UNARY_OP_POSITIVE,
+  UNARY_OP_NEGATIVE,
+  UNARY_OP_LOGICAL_NEGATION
+};
+
+const std::string UNARY_OPERATOR_str[] = {"plus", "minus", "not"};
 
 // C_type= type of constant ex: 1, 3.3, "const string"
 // do not modify, or lexer might break
-enum C_type { INTEGERC, FLOATC, STRINGC };
+enum C_type {
+  INTEGERC,
+  FLOATC,
+  STRINGC
+};
 
 enum STMT_KIND {
   WHILE_STMT,
@@ -75,6 +90,9 @@ enum STMT_KIND {
   FUNCTION_CALL_STMT,
   RETURN_STMT,
 };
+
+const std::string STMT_KIND_str[] = {"WHILE_STMT", "FOR_STMT",           "ASSIGN_STMT",
+                                     "IF_STMT",    "FUNCTION_CALL_STMT", "RETURN_STMT"};
 
 enum EXPR_KIND { BINARY_OPERATION, UNARY_OPERATION };
 
@@ -121,7 +139,7 @@ struct STMTSemanticValue {
 struct EXPRSemanticValue {
   EXPR_KIND kind;
 
-  int isConstEval;
+  bool isConstEval;
   int constEvalValue;
   std::variant<BINARY_OPERATOR, UNARY_OPERATOR> op;
 };
