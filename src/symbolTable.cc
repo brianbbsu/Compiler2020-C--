@@ -36,6 +36,8 @@ bool SymbolTable::declaredLocally(const std::string &name) {
   return ite != table.end() && ite->second.size() && ite->second.top()->level == currentLevel;
 }
 
+bool SymbolTable::isGlobalScope() { return currentLevel == 0; }
+
 SymbolTableEntry *SymbolTable::getSymbol(const std::string &name) {
   auto ite = table.find(name);
   if (ite == table.end() || !ite->second.size())

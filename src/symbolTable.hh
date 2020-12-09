@@ -46,6 +46,7 @@ class SymbolTable {
   void resetSymbolTable();
   void openScope();
   void closeScope();
+  bool isGlobalScope();
   bool declaredLocally(const std::string &name);
   SymbolTableEntry *getSymbol(const std::string &name);
   SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type);

@@ -212,7 +212,7 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
           break;
         } else if (!isConst(dimComponent)) {
           semanticError(variableIDNode->linenumber, "size of array '",
-                        variableSemanticValue.identifierName, "' is not a compile time constant");
+                        variableSemanticValue.identifierName, "' is not a constant");
           anyError = true;
           break;
         }
@@ -226,6 +226,7 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
         arrayProperties.dimensions.push_back(dimVal);
       }
       if (anyError) continue;  // next variable
+
       // TODO: remove debug code below
       std::cerr << "New array: ";
       for (size_t _i = 0; _i < arrayProperties.dimensions.size(); ++_i)
@@ -234,9 +235,24 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
     }
     // Step 3
     if (variableSemanticValue.kind == WITH_INIT_ID) {
-      // TODO: parse initial value and do type check
       // This should not affect symbol table (right?)
-      raiseError("ID with initial value not implemented");
+      assert(variableIDNode->children.size() == 1);
+      AST *initValueNode = variableIDNode->children[0];
+      processExpressionComponent(initValueNode);
+      if (initValueNode->dataType.type == ERROR_TYPE) break;
+      if (variableTypeDesc.type == ARR_TYPE) {
+        semanticError(variableIDNode->linenumber, "cannot declare array variable with initializer");
+        continue;
+      }
+      if (!(initValueNode->dataType.type == INT_TYPE ||
+            initValueNode->dataType.type == FLOAT_TYPE)) {
+        semanticError(initValueNode->linenumber, "invalid initializer");
+        continue;
+      }
+      if (symbolTable.isGlobalScope() && !isConst(initValueNode)) {
+        semanticError(initValueNode->linenumber, "initializer element is not constant");
+        continue;
+      }
     }
     // Step 4
     if (variableTypeDesc.type == VOID_TYPE) {
