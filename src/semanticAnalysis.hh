@@ -37,6 +37,7 @@ class SemanticAnalysis {
   void processExpressionNode(AST *expressionNode);
   void processFunctionCallStatement(AST *statementNode);
   void processConstNode(AST *constNode);
+  void processVariableReference(AST *identifierNode);
 
  public:
   SemanticAnalysis(AST *_prog);

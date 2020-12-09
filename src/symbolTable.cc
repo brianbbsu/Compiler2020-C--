@@ -8,9 +8,9 @@ void SymbolTable::resetSymbolTable() {
   while (currentLevel >= 0) closeScope();
   openScope();  // open global scope
   // add builtin type and functions
-  addTypeSymbol("int", TypeDescriptor{SCALAR_TYPE_DESCRIPTOR, INT_TYPE});
-  addTypeSymbol("float", TypeDescriptor{SCALAR_TYPE_DESCRIPTOR, FLOAT_TYPE});
-  addTypeSymbol("void", TypeDescriptor{SCALAR_TYPE_DESCRIPTOR, VOID_TYPE});
+  addTypeSymbol("int", TypeDescriptor(INT_TYPE));
+  addTypeSymbol("float", TypeDescriptor(FLOAT_TYPE));
+  addTypeSymbol("void", TypeDescriptor(VOID_TYPE));
   addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}});
   addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}});
   // TODO: how to handle write?

@@ -11,19 +11,6 @@
 
 enum SymbolKind { VARIABLE_SYMBOL, TYPE_SYMBOL, FUNCTION_SYMBOL };
 
-enum TypeDescriptorKind { SCALAR_TYPE_DESCRIPTOR, ARRAY_TYPE_DESCRIPTOR };
-
-struct ArrayProperties {
-  DATA_TYPE elementType;
-  std::vector<int> dimensions;
-};
-
-struct TypeDescriptor {
-  TypeDescriptorKind kind;
-  // DATA_TYPE for scalar, ArrayProperties for array
-  std::variant<DATA_TYPE, ArrayProperties> description;
-};
-
 struct FunctionParameter {
   TypeDescriptor type;
   std::string name;

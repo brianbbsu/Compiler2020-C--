@@ -47,10 +47,32 @@ void ASTPrinter::printGVNode(AST *node, int nodeID) {
       break;
     case IDENTIFIER_NODE:
       os << " '" << std::get<IdentifierSemanticValue>(node->semanticValue).identifierName << "' "
-         << IDENTIFIER_KIND_str[(size_t)std::get<IdentifierSemanticValue>(node->semanticValue).kind];
+         << IDENTIFIER_KIND_str[(size_t)std::get<IdentifierSemanticValue>(node->semanticValue)
+                                    .kind];
       break;
     default:
       break;
   }
   os << "\"]\n";
+}
+
+std::ostream &operator<<(std::ostream &os, UNARY_OPERATOR op) {
+  return os << UNARY_OPERATOR_str[(size_t)op];
+}
+
+std::ostream &operator<<(std::ostream &os, BINARY_OPERATOR op) {
+  return os << BINARY_OPERATOR_str[(size_t)op];
+}
+
+std::ostream &operator<<(std::ostream &os, const TypeDescriptor &typeDesc) {
+  if (typeDesc.type != ARR_TYPE) {
+    return os << DATA_TYPE_str[(size_t)typeDesc.type];
+  } else {
+    const ArrayProperties &arrayProperties = typeDesc.arrayProperties;
+    assert(arrayProperties.elementType == INT_TYPE || arrayProperties.elementType == FLOAT_TYPE);
+    os << DATA_TYPE_str[arrayProperties.elementType] << "[]";
+    for (size_t i = 1; i < arrayProperties.dimensions.size(); ++i)
+      os << "[" << arrayProperties.dimensions[i] << "]";
+    return os;
+  }
 }

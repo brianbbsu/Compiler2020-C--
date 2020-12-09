@@ -29,24 +29,17 @@ enum DATA_TYPE {
   INT_TYPE,
   FLOAT_TYPE,
   VOID_TYPE,
-  INT_PTR_TYPE,       // for parameter passing
-  FLOAT_PTR_TYPE,     // for parameter passing
+  ARR_TYPE,
   CONST_STRING_TYPE,  // for "const string"
-  NONE_TYPE,          // for nodes like PROGRAM_NODE which has no type
+  NONE_TYPE,
   ERROR_TYPE
 };
-
-const std::string DATA_TYPE_str[] = {"int",          "float",          "void",
-                                     "INT_PTR_TYPE", "FLOAT_PTR_TYPE", "const string",
-                                     "NONE_TYPE",    "ERROR_TYPE"};
 
 enum IDENTIFIER_KIND {
   NORMAL_ID,     // function Name, uninitialized scalar variable
   ARRAY_ID,      // ID_NODE->child = dim
   WITH_INIT_ID,  // ID_NODE->child = initial value
 };
-
-const std::string IDENTIFIER_KIND_str[] = {"NORMAL_ID", "ARRAY_ID", "WITH_INIT_ID"};
 
 enum BINARY_OPERATOR {
   BINARY_OP_ADD,
@@ -63,12 +56,7 @@ enum BINARY_OPERATOR {
   BINARY_OP_OR
 };
 
-const std::string BINARY_OPERATOR_str[] = {
-    "+", "-", "*", "/", "==", ">=", "<=", "!=", ">", "<", "&&", "||"};
-
 enum UNARY_OPERATOR { UNARY_OP_POSITIVE, UNARY_OP_NEGATIVE, UNARY_OP_LOGICAL_NEGATION };
-
-const std::string UNARY_OPERATOR_str[] = {"plus", "minus", "not"};
 
 // C_type= type of constant ex: 1, 3.3, "const string"
 // do not modify, or lexer might break
@@ -83,15 +71,9 @@ enum STMT_KIND {
   RETURN_STMT,
 };
 
-const std::string STMT_KIND_str[] = {"WHILE_STMT", "FOR_STMT",           "ASSIGN_STMT",
-                                     "IF_STMT",    "FUNCTION_CALL_STMT", "RETURN_STMT"};
-
 enum EXPR_KIND { BINARY_OPERATION, UNARY_OPERATION };
 
 enum DECL_KIND { VARIABLE_DECL, TYPE_DECL, ENUM_DECL, FUNCTION_DECL, FUNCTION_PARAMETER_DECL };
-
-const std::string DECL_KIND_str[] = {"VARIABLE_DECL", "TYPE_DECL", "ENUM_DECL", "FUNCTION_DECL",
-                                     "FUNCTION_PARAMETER_DECL"};
 
 enum AST_TYPE {
   PROGRAM_NODE,
@@ -109,21 +91,6 @@ enum AST_TYPE {
   NONEMPTY_ASSIGN_EXPR_LIST_NODE,
   NONEMPTY_RELOP_EXPR_LIST_NODE
 };
-
-const std::string AST_TYPE_str[] = {"PROGRAM_NODE",
-                                    "DECLARATION_NODE",
-                                    "IDENTIFIER_NODE",
-                                    "ENUM_NODE",
-                                    "PARAM_LIST_NODE",
-                                    "NUL_NODE",
-                                    "BLOCK_NODE",
-                                    "VARIABLE_DECL_LIST_NODE",
-                                    "STMT_LIST_NODE",
-                                    "STMT_NODE",
-                                    "EXPR_NODE",
-                                    "CONST_VALUE_NODE",
-                                    "NONEMPTY_ASSIGN_EXPR_LIST_NODE",
-                                    "NONEMPTY_RELOP_EXPR_LIST_NODE"};
 
 /* Structs for Semantic Value */
 struct STMTSemanticValue {
@@ -150,8 +117,17 @@ struct IdentifierSemanticValue {
   /* struct SymbolTableEntry *symbolTableEntry; */
 };
 
-struct TypeSpecSemanticValue {
-  std::string typeName;
+struct ArrayProperties {
+  DATA_TYPE elementType;
+  std::vector<int> dimensions;
+  ArrayProperties() : elementType(NONE_TYPE) {}
+};
+
+struct TypeDescriptor {
+  DATA_TYPE type;
+  ArrayProperties arrayProperties;
+  TypeDescriptor() : type(NONE_TYPE) {}
+  TypeDescriptor(DATA_TYPE _type) : type(_type) {}
 };
 
 /* Parser Types */
@@ -164,7 +140,7 @@ struct Const {
 
 struct AST {
   AST_TYPE nodeType;
-  DATA_TYPE dataType;
+  TypeDescriptor dataType;
   int linenumber;
   std::vector<AST *> children;
   std::variant<IdentifierSemanticValue, STMTSemanticValue, DECLSemanticValue, EXPRSemanticValue,

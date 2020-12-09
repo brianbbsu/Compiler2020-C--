@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <iostream>
 
+#include "print.hh"
+
 SemanticAnalysis::SemanticAnalysis(AST *_prog) : prog(_prog), symbolTable() {}
 
 void SemanticAnalysis::runAnalysis() {
@@ -190,20 +192,20 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
     TypeDescriptor variableTypeDesc = typeDesc;
     // Step 1, 2
     if (variableSemanticValue.kind == ARRAY_ID) {
-      if (variableTypeDesc.kind == SCALAR_TYPE_DESCRIPTOR) {
+      if (variableTypeDesc.type != ARR_TYPE) {
         // Turn scalar type into array type
-        variableTypeDesc.kind = ARRAY_TYPE_DESCRIPTOR;
-        DATA_TYPE origType = std::get<DATA_TYPE>(variableTypeDesc.description);
-        variableTypeDesc.description.emplace<ArrayProperties>(ArrayProperties{origType, {}});
+        variableTypeDesc.arrayProperties.elementType = variableTypeDesc.type;
+        variableTypeDesc.arrayProperties.dimensions.clear();  // ensure the array dimension is empty
+        variableTypeDesc.type = ARR_TYPE;
       }
-      ArrayProperties &arrayProperties = std::get<ArrayProperties>(variableTypeDesc.description);
+      ArrayProperties &arrayProperties = variableTypeDesc.arrayProperties;
       bool anyError = false;
       for (AST *dimComponent : variableIDNode->children) {
         processExpressionComponent(dimComponent);
-        if (dimComponent->dataType == ERROR_TYPE) {
+        if (dimComponent->dataType.type == ERROR_TYPE) {
           anyError = true;
           continue;
-        } else if (dimComponent->dataType != INT_TYPE) {
+        } else if (dimComponent->dataType.type != INT_TYPE) {
           semanticError(variableIDNode->linenumber, "size of array '",
                         variableSemanticValue.identifierName, "' has non-integer type");
           anyError = true;
@@ -215,9 +217,9 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
           break;
         }
         int dimVal = getConstValue<int>(dimComponent);
-        if (dimVal < 0) {
+        if (dimVal <= 0) {
           semanticError(variableIDNode->linenumber, "size of array '",
-                        variableSemanticValue.identifierName, "' is negative");
+                        variableSemanticValue.identifierName, "' is not positive");
           anyError = true;
           break;
         }
@@ -237,14 +239,13 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
       raiseError("ID with initial value not implemented");
     }
     // Step 4
-    if (variableTypeDesc.kind == SCALAR_TYPE_DESCRIPTOR &&
-        std::get<DATA_TYPE>(variableTypeDesc.description) == VOID_TYPE) {
+    if (variableTypeDesc.type == VOID_TYPE) {
       semanticError(variableIDNode->linenumber, "variable or field '",
                     variableSemanticValue.identifierName, "' declared void");
       continue;
     }
-    if (variableTypeDesc.kind == ARRAY_TYPE_DESCRIPTOR &&
-        std::get<ArrayProperties>(variableTypeDesc.description).elementType == VOID_TYPE) {
+    if (variableTypeDesc.type == ARR_TYPE &&
+        variableTypeDesc.arrayProperties.elementType == VOID_TYPE) {
       semanticError(variableIDNode->linenumber, "declaration of ‘",
                     variableSemanticValue.identifierName, "’ as array of voids");
       continue;
@@ -280,10 +281,13 @@ void SemanticAnalysis::processExpressionComponent(AST *expressionComponent) {
     case CONST_VALUE_NODE:
       processConstNode(expressionComponent);
       break;
+    case IDENTIFIER_NODE:
+      processVariableReference(expressionComponent);
+      break;
     default:
       raiseError("Unknown expression component node type");
   }
-  assert(expressionComponent->dataType != NONE_TYPE);
+  assert(expressionComponent->dataType.type != NONE_TYPE);
 }
 
 void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
@@ -293,9 +297,9 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
   bool anyError = false;
   for (AST *operandNode : expressionNode->children) {
     processExpressionComponent(operandNode);
-    if (operandNode->dataType == ERROR_TYPE)
+    if (operandNode->dataType.type == ERROR_TYPE)
       anyError = true;
-    else if (operandNode->dataType == VOID_TYPE) {
+    else if (operandNode->dataType.type == VOID_TYPE) {
       semanticError(operandNode->linenumber, "void value not ignored as it ought to be");
       anyError = true;
     }
@@ -308,15 +312,14 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
     assert(expressionNode->children.size() == (size_t)1);
     UNARY_OPERATOR op = std::get<UNARY_OPERATOR>(exprSemanticValue.op);
     AST *operand = expressionNode->children[0];
-    if (!(operand->dataType == INT_TYPE || operand->dataType == FLOAT_TYPE)) {
-      const std::string &unaryOpStr = UNARY_OPERATOR_str[(size_t)op];
-      const std::string &typeStr = DATA_TYPE_str[(size_t)operand->dataType];
-      semanticError(expressionNode->linenumber, "invalid operand to unary ", unaryOpStr, " (have '",
-                    typeStr, "')");
+    const TypeDescriptor &opTypeDesc = operand->dataType;
+    if (!(opTypeDesc.type == INT_TYPE || opTypeDesc.type == FLOAT_TYPE)) {
+      semanticError(expressionNode->linenumber, "invalid operand to unary ", op, " (have '",
+                    opTypeDesc, "')");
       expressionNode->dataType = ERROR_TYPE;
       return;
     }
-    const DATA_TYPE opValueType = operand->dataType;
+    const DATA_TYPE opValueType = opTypeDesc.type;
     switch (op) {
       case UNARY_OP_LOGICAL_NEGATION:
         expressionNode->dataType = INT_TYPE;
@@ -339,17 +342,16 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
     BINARY_OPERATOR op = std::get<BINARY_OPERATOR>(exprSemanticValue.op);
     AST *lOperand = expressionNode->children[0];
     AST *rOperand = expressionNode->children[1];
-    if (!(lOperand->dataType == INT_TYPE || lOperand->dataType == FLOAT_TYPE) ||
-        !(rOperand->dataType == INT_TYPE || rOperand->dataType == FLOAT_TYPE)) {
-      const std::string &binaryOpStr = BINARY_OPERATOR_str[(size_t)op];
-      const std::string &lTypeStr = DATA_TYPE_str[(size_t)lOperand->dataType];
-      const std::string &rTypeStr = DATA_TYPE_str[(size_t)rOperand->dataType];
-      semanticError(expressionNode->linenumber, "invalid operand to binary ", binaryOpStr,
-                    " (have '", lTypeStr, "' and '", rTypeStr, "')");
+    const TypeDescriptor &lOpTypeDesc = lOperand->dataType;
+    const TypeDescriptor &rOpTypeDesc = rOperand->dataType;
+    if (!(lOpTypeDesc.type == INT_TYPE || lOpTypeDesc.type == FLOAT_TYPE) ||
+        !(rOpTypeDesc.type == INT_TYPE || rOpTypeDesc.type == FLOAT_TYPE)) {
+      semanticError(expressionNode->linenumber, "invalid operand to binary ", op, " (have '",
+                    lOpTypeDesc, "' and '", rOpTypeDesc, "')");
       expressionNode->dataType = ERROR_TYPE;
       return;
     }
-    const DATA_TYPE opValueType = getLargerType(lOperand->dataType, rOperand->dataType);
+    const DATA_TYPE opValueType = getLargerType(lOpTypeDesc.type, rOpTypeDesc.type);
     switch (op) {
       case BINARY_OP_ADD:
       case BINARY_OP_SUB:
@@ -392,6 +394,72 @@ void SemanticAnalysis::processConstNode(AST *constNode) {
     case STRINGC:
       constNode->dataType = CONST_STRING_TYPE;
       break;
+  }
+}
+
+void SemanticAnalysis::processVariableReference(AST *identifierNode) {
+  assert(identifierNode->nodeType == IDENTIFIER_NODE);
+  IdentifierSemanticValue &idSemnticValue =
+      std::get<IdentifierSemanticValue>(identifierNode->semanticValue);
+  assert(idSemnticValue.kind == NORMAL_ID || idSemnticValue.kind == ARRAY_ID);
+
+  SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemnticValue.identifierName);
+  if (idEntry == nullptr) {
+    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
+                  "' was not declared in this scope");
+    identifierNode->dataType = ERROR_TYPE;
+    return;
+  } else if (idEntry->symbolKind == FUNCTION_SYMBOL) {
+    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
+                  "' is not a variable (but a function)");
+    identifierNode->dataType = ERROR_TYPE;
+    return;
+  } else if (idEntry->symbolKind == TYPE_SYMBOL) {
+    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
+                  "' is not a variable (but a type)");
+    identifierNode->dataType = ERROR_TYPE;
+    return;
+  }
+  assert(idEntry->symbolKind == VARIABLE_SYMBOL);
+  const TypeDescriptor &variableTypeDesc = std::get<TypeDescriptor>(idEntry->attribute);
+  if (idSemnticValue.kind == NORMAL_ID) {
+    identifierNode->dataType = variableTypeDesc;
+  } else {  // ARRAY_ID
+    bool anyError = false;
+    size_t index_dim = 0;
+    for (AST *dimComponent : identifierNode->children) {
+      processExpressionComponent(dimComponent);
+      if (dimComponent->dataType.type == ERROR_TYPE) {
+        anyError = true;
+        break;
+      } else if (dimComponent->dataType.type != INT_TYPE) {
+        semanticError(identifierNode->linenumber, "array subscript is not an integer");
+        anyError = true;
+        break;
+      }
+      ++index_dim;
+    }
+    if (anyError) {
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    assert(index_dim > 0);
+    if (variableTypeDesc.type != ARR_TYPE ||
+        index_dim > variableTypeDesc.arrayProperties.dimensions.size()) {
+      semanticError(identifierNode->linenumber,
+                    "subscripted value is neither array nor pointer nor vector");
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    TypeDescriptor resultTypeDesc;
+    if (index_dim == variableTypeDesc.arrayProperties.dimensions.size()) {
+      resultTypeDesc.type = variableTypeDesc.arrayProperties.elementType;
+    } else {
+      resultTypeDesc = variableTypeDesc;
+      std::vector<int> &dimVec = resultTypeDesc.arrayProperties.dimensions;
+      dimVec.erase(dimVec.begin(), dimVec.begin() + index_dim);
+    }
+    identifierNode->dataType = resultTypeDesc;
   }
 }
 
