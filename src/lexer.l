@@ -103,7 +103,7 @@ error            .
 {flt_constant}  {
                     Const p;
                     p.const_type = FLOATC;
-                    p.value.emplace<double>(atof(yytext));
+                    p.value.emplace<float>(stof(std::string(yytext)));
                     return yy::parser::make_CONST(p);
                 }
 {s-const}       {

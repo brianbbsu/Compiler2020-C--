@@ -63,24 +63,16 @@ enum BINARY_OPERATOR {
   BINARY_OP_OR
 };
 
-const std::string BINARY_OPERATOR_str[] = {"+",  "-",  "*", "/", "==", ">=",
-                                           "<=", "!=", ">", "<", "&&", "||"};
+const std::string BINARY_OPERATOR_str[] = {
+    "+", "-", "*", "/", "==", ">=", "<=", "!=", ">", "<", "&&", "||"};
 
-enum UNARY_OPERATOR {
-  UNARY_OP_POSITIVE,
-  UNARY_OP_NEGATIVE,
-  UNARY_OP_LOGICAL_NEGATION
-};
+enum UNARY_OPERATOR { UNARY_OP_POSITIVE, UNARY_OP_NEGATIVE, UNARY_OP_LOGICAL_NEGATION };
 
 const std::string UNARY_OPERATOR_str[] = {"plus", "minus", "not"};
 
 // C_type= type of constant ex: 1, 3.3, "const string"
 // do not modify, or lexer might break
-enum C_type {
-  INTEGERC,
-  FLOATC,
-  STRINGC
-};
+enum C_type { INTEGERC, FLOATC, STRINGC };
 
 enum STMT_KIND {
   WHILE_STMT,
@@ -142,7 +134,7 @@ struct EXPRSemanticValue {
   EXPR_KIND kind;
 
   bool isConstEval;
-  int constEvalValue;
+  std::variant<int, float> constEvalValue;
   std::variant<BINARY_OPERATOR, UNARY_OPERATOR> op;
 };
 
@@ -167,7 +159,7 @@ extern int lineno;
 
 struct Const {
   C_type const_type;
-  std::variant<int, double, std::string> value;
+  std::variant<int, float, std::string> value;
 };
 
 struct AST {
