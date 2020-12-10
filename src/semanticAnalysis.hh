@@ -33,11 +33,14 @@ class SemanticAnalysis {
   void processFunctionDeclaration(AST *declarationNode);  // only declare
   void processFunctionDefinition(AST *declarationNode);   // with definition
 
+  void processTypeSpecifier(AST *typeSpecifier);
+  void processEnumNode(AST *enumNode);
+
   void processExpressionComponent(AST *expressionComponent);  // every thing with a data type
   void processExpressionNode(AST *expressionNode);
   void processFunctionCallStatement(AST *statementNode);
   void processConstNode(AST *constNode);
-  void processVariableReference(AST *identifierNode);
+  void processIdentifierLValue(AST *identifierNode);
 
  public:
   SemanticAnalysis(AST *_prog);

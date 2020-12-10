@@ -9,7 +9,7 @@
 
 #include "header.hh"
 
-enum SymbolKind { VARIABLE_SYMBOL, TYPE_SYMBOL, FUNCTION_SYMBOL };
+enum SymbolKind { VARIABLE_SYMBOL, TYPE_SYMBOL, FUNCTION_SYMBOL, ENUMERATOR_SYMBOL };
 
 struct FunctionParameter {
   TypeDescriptor type;
@@ -25,8 +25,8 @@ struct FunctionSignature {
 struct SymbolTableEntry {
   int level;
   SymbolKind symbolKind;
-  // TypeDescriptor for variable and type, FunctionSignature for function
-  std::variant<TypeDescriptor, FunctionSignature> attribute;
+  // TypeDescriptor for variable and type, FunctionSignature for function, int for enum const
+  std::variant<TypeDescriptor, FunctionSignature, int> attribute;
 };
 
 class SymbolTable {
@@ -52,6 +52,7 @@ class SymbolTable {
   SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type);
   SymbolTableEntry *addTypeSymbol(const std::string &name, TypeDescriptor type);
   SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature);
+  SymbolTableEntry *addEnumeratorSymbol(const std::string &name, int value);
 };
 
 #endif  // ! __SYMBOL_TABLE_HH__

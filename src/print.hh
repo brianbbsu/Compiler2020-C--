@@ -6,6 +6,7 @@
 #include <string>
 
 #include "header.hh"
+#include "symbolTable.hh"
 
 const std::string DATA_TYPE_str[] = {"int",          "float",     "void",      "ARR_TYPE",
                                      "const string", "NONE_TYPE", "ERROR_TYPE"};
@@ -38,6 +39,8 @@ const std::string AST_TYPE_str[] = {"PROGRAM_NODE",
                                     "NONEMPTY_ASSIGN_EXPR_LIST_NODE",
                                     "NONEMPTY_RELOP_EXPR_LIST_NODE"};
 
+const std::string SymbolKind_str[] = {"variable", "type", "function", "enumerator"};
+
 class ASTPrinter {
   AST *root;
   std::ofstream os;
@@ -53,6 +56,8 @@ class ASTPrinter {
 
 std::ostream &operator<<(std::ostream &os, UNARY_OPERATOR op);
 std::ostream &operator<<(std::ostream &os, BINARY_OPERATOR op);
+std::ostream &operator<<(std::ostream &os, SymbolKind op);
 std::ostream &operator<<(std::ostream &os, const TypeDescriptor &typeDesc);
+std::ostream &operator<<(std::ostream &os, const Const &c);
 
 #endif  // ! __PRINT_HH__

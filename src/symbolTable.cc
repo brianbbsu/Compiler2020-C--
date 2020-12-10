@@ -70,3 +70,8 @@ SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
   SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(signature)};
   return _addSymbol(name, entry);
 }
+
+SymbolTableEntry *SymbolTable::addEnumeratorSymbol(const std::string &name, int value) {
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, ENUMERATOR_SYMBOL, value};
+  return _addSymbol(name, entry);
+}

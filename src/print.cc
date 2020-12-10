@@ -6,6 +6,7 @@
 #include <string>
 
 #include "header.hh"
+#include "symbolTable.hh"
 
 void ASTPrinter::print(const std::string filename /* = "AST_Graph.gv" */) {
   os.open(filename);
@@ -50,6 +51,9 @@ void ASTPrinter::printGVNode(AST *node, int nodeID) {
          << IDENTIFIER_KIND_str[(size_t)std::get<IdentifierSemanticValue>(node->semanticValue)
                                     .kind];
       break;
+    case CONST_VALUE_NODE:
+      os << " " << std::get<Const>(node->semanticValue);
+      break;
     default:
       break;
   }
@@ -64,6 +68,10 @@ std::ostream &operator<<(std::ostream &os, BINARY_OPERATOR op) {
   return os << BINARY_OPERATOR_str[(size_t)op];
 }
 
+std::ostream &operator<<(std::ostream &os, SymbolKind op) {
+  return os << SymbolKind_str[(size_t)op];
+}
+
 std::ostream &operator<<(std::ostream &os, const TypeDescriptor &typeDesc) {
   if (typeDesc.type != ARR_TYPE) {
     return os << DATA_TYPE_str[(size_t)typeDesc.type];
@@ -75,4 +83,21 @@ std::ostream &operator<<(std::ostream &os, const TypeDescriptor &typeDesc) {
       os << "[" << arrayProperties.dimensions[i] << "]";
     return os;
   }
+}
+
+std::ostream &operator<<(std::ostream &os, const Const &c) {
+  switch (c.const_type) {
+    case INTEGERC:
+      os << std::get<int>(c.value);
+      break;
+    case FLOATC:
+      os << std::get<float>(c.value);
+      break;
+    case STRINGC:
+      os << '"' << std::get<std::string>(c.value) << '"';
+      break;
+    default:
+      raiseError("Unknown const type");
+  }
+  return os;
 }

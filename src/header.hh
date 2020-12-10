@@ -114,6 +114,9 @@ struct SymbolAttribute;
 struct IdentifierSemanticValue {
   std::string identifierName;
   IDENTIFIER_KIND kind;
+
+  bool isEnumerator;
+  int enumeratorValue;
   /* struct SymbolTableEntry *symbolTableEntry; */
 };
 
@@ -121,6 +124,9 @@ struct ArrayProperties {
   DATA_TYPE elementType;
   std::vector<int> dimensions;
   ArrayProperties() : elementType(NONE_TYPE) {}
+  bool operator==(const ArrayProperties &rhs) const {
+    return elementType == rhs.elementType && dimensions == rhs.dimensions;
+  }
 };
 
 struct TypeDescriptor {
@@ -128,6 +134,9 @@ struct TypeDescriptor {
   ArrayProperties arrayProperties;
   TypeDescriptor() : type(NONE_TYPE) {}
   TypeDescriptor(DATA_TYPE _type) : type(_type) {}
+  bool operator==(const TypeDescriptor &rhs) const {
+    return type == rhs.type && arrayProperties == rhs.arrayProperties;
+  }
 };
 
 /* Parser Types */

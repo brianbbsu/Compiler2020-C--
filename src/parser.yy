@@ -45,6 +45,7 @@
     IdentifierSemanticValue value;
     value.identifierName = idName;
     value.kind = idKind;
+    value.isEnumerator = false;
     node->semanticValue = value;
     return node;
   }

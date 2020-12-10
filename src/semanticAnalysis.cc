@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "print.hh"
 
@@ -18,9 +19,10 @@ bool SemanticAnalysis::isConst(AST *node) {
   if (node->nodeType == CONST_VALUE_NODE) {
     C_type &type = std::get<Const>(node->semanticValue).const_type;
     return type == INTEGERC || type == FLOATC;
-  } else if (node->nodeType == EXPR_NODE &&
-             std::get<EXPRSemanticValue>(node->semanticValue).isConstEval)
-    return true;
+  } else if (node->nodeType == EXPR_NODE)
+    return std::get<EXPRSemanticValue>(node->semanticValue).isConstEval;
+  else if (node->nodeType == IDENTIFIER_NODE)
+    return std::get<IdentifierSemanticValue>(node->semanticValue).isEnumerator;
   return false;
 }
 
@@ -38,6 +40,8 @@ T SemanticAnalysis::getConstValue(AST *node) {
     return std::visit(visitor, std::get<Const>(node->semanticValue).value);
   else if (node->nodeType == EXPR_NODE)
     return std::visit(visitor, std::get<EXPRSemanticValue>(node->semanticValue).constEvalValue);
+  else if (node->nodeType == IDENTIFIER_NODE)
+    return static_cast<T>(std::get<IdentifierSemanticValue>(node->semanticValue).enumeratorValue);
   raiseError("Unknown node type in getConstValue");
 }
 
@@ -138,10 +142,11 @@ void SemanticAnalysis::processVariableDeclListNode(AST *variableDeclListNode) {
         processVariableDeclaration(child);
         break;
       case TYPE_DECL:
-        // TODO:
+        processTypeDeclaration(child);
         break;
       case ENUM_DECL:
-        // TODO:
+        assert(child->children.size() == 1);
+        processEnumNode(child->children[0]);
         break;
       case FUNCTION_DECL:
         // TODO:
@@ -157,30 +162,15 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
   assert(std::get<DECLSemanticValue>(declarationNode->semanticValue).kind == VARIABLE_DECL);
   assert(declarationNode->children.size() >= 2);
 
-  AST *typeIDNode = declarationNode->children[0];
-  const std::string &typeName =
-      std::get<IdentifierSemanticValue>(typeIDNode->semanticValue).identifierName;
-  SymbolTableEntry *typeEntry = symbolTable.getSymbol(typeName);
-  if (typeEntry == nullptr) {
-    semanticError(typeIDNode->linenumber, "'", typeName, "' was not declared in this scope");
-    return;
-  } else if (typeEntry->symbolKind != TYPE_SYMBOL) {
-    // TODO: type ID is not a type (may be a variable or function)
-    raiseError("Unhandled semantic error");
-  }
-
-  const TypeDescriptor &typeDesc = std::get<TypeDescriptor>(typeEntry->attribute);
+  AST *typeSpecifierNode = declarationNode->children[0];
+  processTypeSpecifier(typeSpecifierNode);
+  if (typeSpecifierNode->dataType.type == ERROR_TYPE) return;
+  const TypeDescriptor &typeDesc = typeSpecifierNode->dataType;
   for (size_t idx = 1; idx < declarationNode->children.size(); ++idx) {
     AST *variableIDNode = declarationNode->children[idx];
     IdentifierSemanticValue variableSemanticValue =
         std::get<IdentifierSemanticValue>(variableIDNode->semanticValue);
-    if (symbolTable.declaredLocally(variableSemanticValue.identifierName)) {
-      semanticError(variableIDNode->linenumber, "redeclaration of '", typeName, " ",
-                    variableSemanticValue.identifierName, "'");
-      continue;  // skip current variable, process the next one
-    }
     /*
-      TODO: declare the variable
       The order should be:
       1. Get extra array dimensions if it's ARRAY_ID.
       2. Deduce actual type and full dimensions from the type
@@ -266,9 +256,40 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
                     variableSemanticValue.identifierName, "’ as array of voids");
       continue;
     }
+    if (symbolTable.declaredLocally(variableSemanticValue.identifierName)) {
+      SymbolTableEntry *origEntry = symbolTable.getSymbol(variableSemanticValue.identifierName);
+      if (origEntry->symbolKind != VARIABLE_SYMBOL) {
+        semanticError(variableIDNode->linenumber, "'", variableSemanticValue.identifierName,
+                      "' redeclared as different kind of symbol");
+        continue;
+      }
+      TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
+      if (origTypeDesc == variableTypeDesc) {
+        semanticError(variableIDNode->linenumber, "redeclaration of '",
+                      variableSemanticValue.identifierName, "'");
+        continue;
+      } else {
+        semanticError(variableIDNode->linenumber, "conflicting types for '",
+                      variableSemanticValue.identifierName, "'");
+        continue;
+      }
+    }
     symbolTable.addVariableSymbol(variableSemanticValue.identifierName,
                                   std::move(variableTypeDesc));
   }
+}
+
+void SemanticAnalysis::processTypeDeclaration(AST *declarationNode) {
+  assert(declarationNode->nodeType == DECLARATION_NODE);
+  assert(std::get<DECLSemanticValue>(declarationNode->semanticValue).kind == TYPE_DECL);
+  assert(declarationNode->children.size() >= 2);
+
+  AST *typeSpecifierNode = declarationNode->children[0];
+  processTypeSpecifier(typeSpecifierNode);
+  if (typeSpecifierNode->dataType.type == ERROR_TYPE) return;
+  const TypeDescriptor &typeDesc = typeSpecifierNode->dataType;
+
+  // TODO: type declaration
 }
 
 void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
@@ -285,8 +306,107 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   symbolTable.closeScope();
 }
 
+void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
+  if (typeSpecifier->nodeType == IDENTIFIER_NODE) {
+    const std::string &typeName =
+        std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).identifierName;
+    SymbolTableEntry *typeEntry = symbolTable.getSymbol(typeName);
+    if (typeEntry == nullptr) {
+      semanticError(typeSpecifier->linenumber, "unknown type name '", typeName, "'");
+      typeSpecifier->dataType = ERROR_TYPE;
+    } else if (typeEntry->symbolKind != TYPE_SYMBOL) {
+      semanticError(typeSpecifier->linenumber, "'", typeName, "' is not a type (but ",
+                    (typeEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ",
+                    typeEntry->symbolKind, ")");
+      typeSpecifier->dataType = ERROR_TYPE;
+    } else
+      typeSpecifier->dataType = std::get<TypeDescriptor>(typeEntry->attribute);
+  } else if (typeSpecifier->nodeType == ENUM_NODE) {
+    processEnumNode(typeSpecifier);
+  } else
+    raiseError("Unknown type specifier node type");
+  assert(typeSpecifier->dataType.type != NONE_TYPE);
+}
+
+void SemanticAnalysis::processEnumNode(AST *enumNode) {
+  assert(enumNode->nodeType == ENUM_NODE);
+  if (enumNode->children.size() == 1) {  // enum ref
+    AST *enumNameIDNode = enumNode->children[0];
+    assert(enumNameIDNode->nodeType == IDENTIFIER_NODE);
+    const IdentifierSemanticValue &enumNameSemanticValue =
+        std::get<IdentifierSemanticValue>(enumNameIDNode->semanticValue);
+    assert(enumNameSemanticValue.kind == NORMAL_ID);
+    const std::string entryName = "enum " + enumNameSemanticValue.identifierName;
+    SymbolTableEntry *enumTypeEntry = symbolTable.getSymbol(entryName);
+    if (enumTypeEntry == nullptr) {
+      semanticError(enumNameIDNode->linenumber, "unknown type name '", entryName, "'");
+      enumNode->dataType = ERROR_TYPE;
+      return;
+    }
+    assert(enumTypeEntry->symbolKind == TYPE_SYMBOL);
+    enumNode->dataType = std::get<TypeDescriptor>(enumTypeEntry->attribute);
+    return;
+  }
+  // enum def
+  AST *enumNameIDNode = enumNode->children[0];
+  if (enumNameIDNode->nodeType == IDENTIFIER_NODE) {  // named enum
+    const IdentifierSemanticValue &enumNameSemanticValue =
+        std::get<IdentifierSemanticValue>(enumNameIDNode->semanticValue);
+    assert(enumNameSemanticValue.kind == NORMAL_ID);
+    const std::string entryName = "enum " + enumNameSemanticValue.identifierName;
+    if (symbolTable.declaredLocally(entryName)) {
+      semanticError(enumNameIDNode->linenumber, "redefinition of '", entryName, "'");
+      enumNode->dataType = ERROR_TYPE;
+      return;
+    }
+    symbolTable.addTypeSymbol(entryName, INT_TYPE);
+  } else
+    assert(enumNameIDNode->nodeType == NUL_NODE);
+  enumNode->dataType = INT_TYPE;
+  int lastEnumeratorValue = -1;
+  for (size_t idx = 1; idx < enumNode->children.size(); ++idx) {
+    AST *enumeratorIDNode = enumNode->children[idx];
+    assert(enumeratorIDNode->nodeType == IDENTIFIER_NODE);
+    const IdentifierSemanticValue &enumeratorSemanticValue =
+        std::get<IdentifierSemanticValue>(enumeratorIDNode->semanticValue);
+    int enumeratorValue;
+    bool haveExplicitValue = false;
+    if (enumeratorSemanticValue.kind == WITH_INIT_ID) {
+      assert(enumeratorIDNode->children.size() == 1);
+      AST *valueNode = enumeratorIDNode->children[0];
+      processExpressionComponent(valueNode);
+      if (valueNode->dataType.type == ERROR_TYPE)  // do nothing
+        ;
+      else if (valueNode->dataType.type != INT_TYPE || !isConst(valueNode)) {
+        semanticError(valueNode->linenumber, "enumerator value for '",
+                      enumeratorSemanticValue.identifierName, "' is not an integer constant");
+      } else {
+        enumeratorValue = getConstValue<int>(valueNode);
+        haveExplicitValue = true;
+      }
+    }
+    if (!haveExplicitValue) {
+      if (lastEnumeratorValue == std::numeric_limits<int>::max()) {
+        semanticError(enumeratorIDNode->linenumber, "overflow in enumeration values");
+      }
+      enumeratorValue = lastEnumeratorValue + 1;
+    }
+    lastEnumeratorValue = enumeratorValue;
+    if (symbolTable.declaredLocally(enumeratorSemanticValue.identifierName)) {
+      SymbolTableEntry *origEntry = symbolTable.getSymbol(enumeratorSemanticValue.identifierName);
+      if (origEntry->symbolKind != ENUMERATOR_SYMBOL)
+        semanticError(enumeratorIDNode->linenumber, "'", enumeratorSemanticValue.identifierName,
+                      "' redeclared as different kind of symbol");
+      else
+        semanticError(enumeratorIDNode->linenumber, "redeclaration of enumerator '",
+                      enumeratorSemanticValue.identifierName, "'");
+      continue;
+    }
+    symbolTable.addEnumeratorSymbol(enumeratorSemanticValue.identifierName, enumeratorValue);
+  }
+}
+
 void SemanticAnalysis::processExpressionComponent(AST *expressionComponent) {
-  // TODO:
   switch (expressionComponent->nodeType) {
     case EXPR_NODE:
       processExpressionNode(expressionComponent);
@@ -298,7 +418,7 @@ void SemanticAnalysis::processExpressionComponent(AST *expressionComponent) {
       processConstNode(expressionComponent);
       break;
     case IDENTIFIER_NODE:
-      processVariableReference(expressionComponent);
+      processIdentifierLValue(expressionComponent);
       break;
     default:
       raiseError("Unknown expression component node type");
@@ -413,7 +533,7 @@ void SemanticAnalysis::processConstNode(AST *constNode) {
   }
 }
 
-void SemanticAnalysis::processVariableReference(AST *identifierNode) {
+void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
   assert(identifierNode->nodeType == IDENTIFIER_NODE);
   IdentifierSemanticValue &idSemnticValue =
       std::get<IdentifierSemanticValue>(identifierNode->semanticValue);
@@ -425,15 +545,23 @@ void SemanticAnalysis::processVariableReference(AST *identifierNode) {
                   "' was not declared in this scope");
     identifierNode->dataType = ERROR_TYPE;
     return;
-  } else if (idEntry->symbolKind == FUNCTION_SYMBOL) {
+  } else if (!(idEntry->symbolKind == VARIABLE_SYMBOL ||
+               idEntry->symbolKind == ENUMERATOR_SYMBOL)) {
     semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
-                  "' is not a variable (but a function)");
+                  "' is not a variable nor an enumerator (but a ", idEntry->symbolKind, ")");
     identifierNode->dataType = ERROR_TYPE;
     return;
-  } else if (idEntry->symbolKind == TYPE_SYMBOL) {
-    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
-                  "' is not a variable (but a type)");
-    identifierNode->dataType = ERROR_TYPE;
+  }
+  if (idEntry->symbolKind == ENUMERATOR_SYMBOL) {
+    if (idSemnticValue.kind == ARRAY_ID) {
+      semanticError(identifierNode->linenumber,
+                    "subscripted value is neither array nor pointer nor vector");
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    idSemnticValue.isEnumerator = true;
+    idSemnticValue.enumeratorValue = std::get<int>(idEntry->attribute);
+    identifierNode->dataType = INT_TYPE;
     return;
   }
   assert(idEntry->symbolKind == VARIABLE_SYMBOL);
