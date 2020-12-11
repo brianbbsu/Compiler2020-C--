@@ -34,6 +34,7 @@ class SemanticAnalysis {
   void processFunctionDefinition(AST *declarationNode);   // with definition
 
   void processTypeSpecifier(AST *typeSpecifier);
+  TypeDescriptor getDeclaratorType(const TypeDescriptor &typeSpecifierTypeDesc, AST *declarator);
   void processEnumNode(AST *enumNode);
 
   void processExpressionComponent(AST *expressionComponent);  // every thing with a data type

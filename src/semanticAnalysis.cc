@@ -167,9 +167,6 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
   if (typeSpecifierNode->dataType.type == ERROR_TYPE) return;
   const TypeDescriptor &typeDesc = typeSpecifierNode->dataType;
   for (size_t idx = 1; idx < declarationNode->children.size(); ++idx) {
-    AST *variableIDNode = declarationNode->children[idx];
-    IdentifierSemanticValue variableSemanticValue =
-        std::get<IdentifierSemanticValue>(variableIDNode->semanticValue);
     /*
       The order should be:
       1. Get extra array dimensions if it's ARRAY_ID.
@@ -179,51 +176,13 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
          initial value to array variable or when the type is incompatible.
       4. Declare the variable.
     */
-    TypeDescriptor variableTypeDesc = typeDesc;
-    // Step 1, 2
-    if (variableSemanticValue.kind == ARRAY_ID) {
-      if (variableTypeDesc.type != ARR_TYPE) {
-        // Turn scalar type into array type
-        variableTypeDesc.arrayProperties.elementType = variableTypeDesc.type;
-        variableTypeDesc.arrayProperties.dimensions.clear();  // ensure the array dimension is empty
-        variableTypeDesc.type = ARR_TYPE;
-      }
-      ArrayProperties &arrayProperties = variableTypeDesc.arrayProperties;
-      bool anyError = false;
-      for (AST *dimComponent : variableIDNode->children) {
-        processExpressionComponent(dimComponent);
-        if (dimComponent->dataType.type == ERROR_TYPE) {
-          anyError = true;
-          continue;
-        } else if (dimComponent->dataType.type != INT_TYPE) {
-          semanticError(variableIDNode->linenumber, "size of array '",
-                        variableSemanticValue.identifierName, "' has non-integer type");
-          anyError = true;
-          break;
-        } else if (!isConst(dimComponent)) {
-          semanticError(variableIDNode->linenumber, "size of array '",
-                        variableSemanticValue.identifierName, "' is not a constant");
-          anyError = true;
-          break;
-        }
-        int dimVal = getConstValue<int>(dimComponent);
-        if (dimVal <= 0) {
-          semanticError(variableIDNode->linenumber, "size of array '",
-                        variableSemanticValue.identifierName, "' is not positive");
-          anyError = true;
-          break;
-        }
-        arrayProperties.dimensions.push_back(dimVal);
-      }
-      if (anyError) continue;  // next variable
-
-      // TODO: remove debug code below
-      std::cerr << "New array: ";
-      for (size_t _i = 0; _i < arrayProperties.dimensions.size(); ++_i)
-        std::cerr << arrayProperties.dimensions[_i]
-                  << " \n"[_i + 1 == arrayProperties.dimensions.size()];
-    }
+    // Step 1 & 2
+    AST *variableIDNode = declarationNode->children[idx];
+    const TypeDescriptor variableTypeDesc = getDeclaratorType(typeDesc, variableIDNode);
+    if (variableTypeDesc.type == ERROR_TYPE) continue;
     // Step 3
+    IdentifierSemanticValue variableSemanticValue =
+        std::get<IdentifierSemanticValue>(variableIDNode->semanticValue);
     if (variableSemanticValue.kind == WITH_INIT_ID) {
       // This should not affect symbol table (right?)
       assert(variableIDNode->children.size() == 1);
@@ -287,9 +246,33 @@ void SemanticAnalysis::processTypeDeclaration(AST *declarationNode) {
   AST *typeSpecifierNode = declarationNode->children[0];
   processTypeSpecifier(typeSpecifierNode);
   if (typeSpecifierNode->dataType.type == ERROR_TYPE) return;
-  const TypeDescriptor &typeDesc = typeSpecifierNode->dataType;
+  const TypeDescriptor &typeSpecifierTypeDesc = typeSpecifierNode->dataType;
 
-  // TODO: type declaration
+  for (size_t idx = 1; idx < declarationNode->children.size(); ++idx) {
+    AST *declaratorIDNode = declarationNode->children[idx];
+    const TypeDescriptor declaratorTypeDesc =
+        getDeclaratorType(typeSpecifierTypeDesc, declaratorIDNode);
+    if (declaratorTypeDesc.type == ERROR_TYPE) continue;
+    const IdentifierSemanticValue &declaratorSemanticValue =
+        std::get<IdentifierSemanticValue>(declaratorIDNode->semanticValue);
+    assert(declaratorSemanticValue.kind != WITH_INIT_ID);
+    if (symbolTable.declaredLocally(declaratorSemanticValue.identifierName)) {
+      SymbolTableEntry *origEntry = symbolTable.getSymbol(declaratorSemanticValue.identifierName);
+      if (origEntry->symbolKind != TYPE_SYMBOL) {
+        semanticError(declaratorIDNode->linenumber, "'", declaratorSemanticValue.identifierName,
+                      "' redeclared as different kind of symbol");
+        continue;
+      }
+      TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
+      if (!(origTypeDesc == declaratorTypeDesc)) {
+        semanticError(declaratorIDNode->linenumber, "conflicting types for '",
+                      declaratorSemanticValue.identifierName, "'");
+      }
+      continue;  // allow redeclaration of the same type
+    }
+    symbolTable.addTypeSymbol(declaratorSemanticValue.identifierName,
+                              std::move(declaratorTypeDesc));
+  }
 }
 
 void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
@@ -326,6 +309,58 @@ void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
   } else
     raiseError("Unknown type specifier node type");
   assert(typeSpecifier->dataType.type != NONE_TYPE);
+}
+
+TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpecifierTypeDesc,
+                                                   AST *declarator) {
+  assert(declarator->nodeType == IDENTIFIER_NODE);
+  IdentifierSemanticValue declaratorSemanticValue =
+      std::get<IdentifierSemanticValue>(declarator->semanticValue);
+  TypeDescriptor declaratorTypeDesc = typeSpecifierTypeDesc;
+  if (declaratorSemanticValue.kind == NORMAL_ID) return declaratorTypeDesc;
+  assert(declaratorSemanticValue.kind == ARRAY_ID);
+  if (declaratorTypeDesc.type != ARR_TYPE) {
+    // Turn scalar type into array type
+    declaratorTypeDesc.arrayProperties.elementType = declaratorTypeDesc.type;
+    declaratorTypeDesc.arrayProperties.dimensions.clear();  // ensure the array dimension is empty
+    declaratorTypeDesc.type = ARR_TYPE;
+  }
+  ArrayProperties &arrayProperties = declaratorTypeDesc.arrayProperties;
+  bool anyError = false;
+  for (AST *dimComponent : declarator->children) {
+    processExpressionComponent(dimComponent);
+    if (dimComponent->dataType.type == ERROR_TYPE) {
+      anyError = true;
+      continue;
+    } else if (dimComponent->dataType.type != INT_TYPE) {
+      semanticError(declarator->linenumber, "size of array '",
+                    declaratorSemanticValue.identifierName, "' has non-integer type");
+      anyError = true;
+      break;
+    } else if (!isConst(dimComponent)) {
+      semanticError(declarator->linenumber, "size of array '",
+                    declaratorSemanticValue.identifierName, "' is not a constant");
+      anyError = true;
+      break;
+    }
+    int dimVal = getConstValue<int>(dimComponent);
+    if (dimVal <= 0) {
+      semanticError(declarator->linenumber, "size of array '",
+                    declaratorSemanticValue.identifierName, "' is not positive");
+      anyError = true;
+      break;
+    }
+    arrayProperties.dimensions.push_back(dimVal);
+  }
+  if (anyError) return ERROR_TYPE;
+
+  // TODO: remove debug code below
+  std::cerr << "New array: ";
+  for (size_t _i = 0; _i < arrayProperties.dimensions.size(); ++_i)
+    std::cerr << arrayProperties.dimensions[_i]
+              << " \n"[_i + 1 == arrayProperties.dimensions.size()];
+
+  return declaratorTypeDesc;
 }
 
 void SemanticAnalysis::processEnumNode(AST *enumNode) {
