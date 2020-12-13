@@ -115,6 +115,25 @@ DATA_TYPE SemanticAnalysis::getLargerType(DATA_TYPE type1, DATA_TYPE type2) {
     return INT_TYPE;
 }
 
+bool SemanticAnalysis::isTypeCompatible(const TypeDescriptor &lhsTypeDesc,
+                                        const TypeDescriptor &rhsTypeDesc) {
+  if ((lhsTypeDesc.type == ARR_TYPE) ^ (rhsTypeDesc.type == ARR_TYPE)) return false;
+  if (lhsTypeDesc.type == ARR_TYPE) {
+    const ArrayProperties &lhsArrayProperties = lhsTypeDesc.arrayProperties;
+    const ArrayProperties &rhsArrayProperties = rhsTypeDesc.arrayProperties;
+    if (lhsArrayProperties.elementType != rhsArrayProperties.elementType ||
+        lhsArrayProperties.dimensions.size() != rhsArrayProperties.dimensions.size())
+      return false;
+    for (size_t idx = 1; idx < lhsArrayProperties.dimensions.size(); ++idx)
+      if (lhsArrayProperties.dimensions[idx] != rhsArrayProperties.dimensions[idx]) return false;
+    return true;
+  }
+  if ((lhsTypeDesc.type == INT_TYPE || lhsTypeDesc.type == FLOAT_TYPE) &&
+      (rhsTypeDesc.type == INT_TYPE || rhsTypeDesc.type == FLOAT_TYPE))
+    return true;
+  return false;
+}
+
 void SemanticAnalysis::processProgramNode(AST *programNode) {
   assert(programNode->nodeType == PROGRAM_NODE);
   for (AST *child : programNode->children) {
@@ -149,7 +168,7 @@ void SemanticAnalysis::processVariableDeclListNode(AST *variableDeclListNode) {
         processEnumNode(child->children[0]);
         break;
       case FUNCTION_DECL:
-        // TODO:
+        processFunctionDeclaration(child);
         break;
       default:
         raiseError("Unknown child DECL_KIND");
@@ -193,8 +212,7 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
         semanticError(variableIDNode->linenumber, "cannot declare array variable with initializer");
         continue;
       }
-      if (!(initValueNode->dataType.type == INT_TYPE ||
-            initValueNode->dataType.type == FLOAT_TYPE)) {
+      if (!isTypeCompatible(variableTypeDesc, initValueNode->dataType)) {
         semanticError(initValueNode->linenumber, "invalid initializer");
         continue;
       }
@@ -275,18 +293,279 @@ void SemanticAnalysis::processTypeDeclaration(AST *declarationNode) {
   }
 }
 
+void SemanticAnalysis::processFunctionDeclaration(AST *declarationNode) {
+  assert(declarationNode->nodeType == DECLARATION_NODE);
+  assert(std::get<DECLSemanticValue>(declarationNode->semanticValue).kind == FUNCTION_DECL);
+  assert(declarationNode->children.size() == 3);
+  // Children : 0 -> Type, 1 -> Name, 2 -> Argument
+
+  AST *typeSpecifierNode = declarationNode->children[0];
+  AST *functionNameIDNode = declarationNode->children[1];
+  AST *parameterListNode = declarationNode->children[2];
+
+  assert(functionNameIDNode->nodeType == IDENTIFIER_NODE);
+  const std::string functionName =
+      std::get<IdentifierSemanticValue>(functionNameIDNode->semanticValue).identifierName;
+
+  processTypeSpecifier(typeSpecifierNode);
+  const TypeDescriptor &returnTypeDesc = typeSpecifierNode->dataType;
+  if (returnTypeDesc.type == ERROR_TYPE) return;
+  if (returnTypeDesc.type == ARR_TYPE) {
+    semanticError(functionNameIDNode->linenumber, "'", functionName,
+                  "' declared as function returning an array");
+    return;
+  }
+
+  symbolTable.openScope();
+  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode);
+  symbolTable.closeScope();
+  if (parameterListNode->dataType.type == ERROR_TYPE) return;
+  if (symbolTable.declaredLocally(functionName)) {
+    SymbolTableEntry *origEntry = symbolTable.getSymbol(functionName);
+    if (origEntry->symbolKind != FUNCTION_SYMBOL) {
+      semanticError(functionNameIDNode->linenumber, "'", functionName,
+                    "' redeclared as different kind of symbol");
+      return;
+    }
+    FunctionSignature &origSignature = std::get<FunctionSignature>(origEntry->attribute);
+    if (!(origSignature.returnType == returnTypeDesc.type &&
+          origSignature.parameters == parameters)) {
+      semanticError(functionNameIDNode->linenumber, "conflicting types for '", functionName, "'");
+      return;
+    }
+    // Nothing to do, leave it as it is
+  } else {
+    symbolTable.addFunctionSymbol(functionName,
+                                  {returnTypeDesc.type, std::move(parameters), false});
+  }
+}
+
 void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   assert(declarationNode->nodeType == DECLARATION_NODE);
   assert(std::get<DECLSemanticValue>(declarationNode->semanticValue).kind == FUNCTION_DECL);
-  // TODO: Process function definition
-
+  assert(declarationNode->children.size() == 4);
   // Children : 0 -> Type, 1 -> Name, 2 -> Argument, 3 -> block
 
-  // Parse type and name before opening scope
+  AST *typeSpecifierNode = declarationNode->children[0];
+  AST *functionNameIDNode = declarationNode->children[1];
+  AST *parameterListNode = declarationNode->children[2];
+  AST *bodyBlockNode = declarationNode->children[3];
+
+  assert(functionNameIDNode->nodeType == IDENTIFIER_NODE);
+  const std::string functionName =
+      std::get<IdentifierSemanticValue>(functionNameIDNode->semanticValue).identifierName;
+
+  processTypeSpecifier(typeSpecifierNode);
+  const TypeDescriptor &returnTypeDesc = typeSpecifierNode->dataType;
+  if (returnTypeDesc.type == ERROR_TYPE) return;
+  if (returnTypeDesc.type == ARR_TYPE) {
+    semanticError(functionNameIDNode->linenumber, "'", functionName,
+                  "' declared as function returning an array");
+    return;
+  }
 
   symbolTable.openScope();
-
+  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode);
+  if (parameterListNode->dataType.type == ERROR_TYPE) {
+    symbolTable.closeScope();  // skip this function
+    return;
+  }
+  symbolTable.stashScope();  // stash to process function declaration
+  if (symbolTable.declaredLocally(functionName)) {
+    SymbolTableEntry *origEntry = symbolTable.getSymbol(functionName);
+    if (origEntry->symbolKind != FUNCTION_SYMBOL) {
+      semanticError(functionNameIDNode->linenumber, "'", functionName,
+                    "' redeclared as different kind of symbol");
+      symbolTable.dropStash();
+      return;
+    }
+    FunctionSignature &origSignature = std::get<FunctionSignature>(origEntry->attribute);
+    if (!(origSignature.returnType == returnTypeDesc.type &&
+          origSignature.parameters == parameters)) {
+      semanticError(functionNameIDNode->linenumber, "conflicting types for '", functionName, "'");
+      symbolTable.dropStash();
+      return;
+    }
+    if (origSignature.hasDefinition) {
+      semanticError(functionNameIDNode->linenumber, "redefinition of '", functionName, "'");
+      symbolTable.dropStash();
+      return;
+    }
+    origSignature.hasDefinition = true;
+  } else {
+    symbolTable.addFunctionSymbol(functionName, {returnTypeDesc.type, std::move(parameters), true});
+  }
+  symbolTable.popStash();
+  processBlockNode(bodyBlockNode);
   symbolTable.closeScope();
+}
+
+std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *paramListNode) {
+  assert(paramListNode->nodeType == PARAM_LIST_NODE);
+  std::vector<TypeDescriptor> parameterDeclList;
+  for (AST *child : paramListNode->children) {
+    if (child->nodeType != DECLARATION_NODE) {
+      // Only type
+      // This must be only a function declaration, which is enforced by the parser
+      processTypeSpecifier(child);
+      if (child->dataType.type == ERROR_TYPE) {
+        paramListNode->dataType = ERROR_TYPE;
+        parameterDeclList.push_back(ERROR_TYPE);
+        continue;
+      }
+      parameterDeclList.push_back(child->dataType);
+      continue;
+    }
+    assert(std::get<DECLSemanticValue>(child->semanticValue).kind == FUNCTION_PARAMETER_DECL);
+    assert(child->children.size() == 2);
+    AST *typeSpecifierNode = child->children[0];
+    AST *parameterNameIDNode = child->children[1];
+    processTypeSpecifier(typeSpecifierNode);
+    if (typeSpecifierNode->dataType.type == ERROR_TYPE) {
+      paramListNode->dataType = ERROR_TYPE;
+      parameterDeclList.push_back(ERROR_TYPE);
+      continue;
+    }
+    const TypeDescriptor &typeSpecifierTypeDesc = typeSpecifierNode->dataType;
+    TypeDescriptor parameterTypeDesc =
+        getDeclaratorType(typeSpecifierTypeDesc, parameterNameIDNode);
+    if (parameterTypeDesc.type == ARR_TYPE)
+      parameterTypeDesc.arrayProperties.dimensions[0] = EMPTY_DIM;  // ignore first dimension
+    parameterDeclList.push_back(parameterTypeDesc);
+    const IdentifierSemanticValue &parameterNameSemanticValue =
+        std::get<IdentifierSemanticValue>(parameterNameIDNode->semanticValue);
+    assert(parameterNameSemanticValue.kind == NORMAL_ID ||
+           parameterNameSemanticValue.kind == ARRAY_ID);
+    const std::string parameterName = parameterNameSemanticValue.identifierName;
+    if (symbolTable.declaredLocally(parameterName)) {
+      SymbolTableEntry *origEntry = symbolTable.getSymbol(parameterName);
+      if (origEntry->symbolKind != VARIABLE_SYMBOL) {
+        semanticError(parameterNameIDNode->linenumber, "'", parameterName,
+                      "' redeclared as different kind of symbol");
+        continue;
+      }
+      const TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
+      if (!(origTypeDesc == parameterTypeDesc)) {
+        semanticError(parameterNameIDNode->linenumber, "conflicting types for '", parameterName,
+                      "'");
+        continue;
+      }
+      semanticError(parameterNameIDNode->linenumber, "redefinition of parameter '", parameterName,
+                    "'");
+      continue;
+    }
+    symbolTable.addVariableSymbol(parameterName, parameterTypeDesc);
+  }
+  return parameterDeclList;
+}
+
+void SemanticAnalysis::processBlockNode(AST *blockNode) {
+  assert(blockNode->nodeType == BLOCK_NODE);
+  for (AST *child : blockNode->children) {
+    switch (child->nodeType) {
+      case VARIABLE_DECL_LIST_NODE:
+        processVariableDeclListNode(child);
+        break;
+      case STMT_LIST_NODE:
+        processStatementListNode(child);
+        break;
+      default:
+        raiseError("Unkonwn blockNode child node type");
+    }
+  }
+}
+
+void SemanticAnalysis::processStatementListNode(AST *statementListNode) {
+  assert(statementListNode->nodeType == STMT_LIST_NODE);
+  for (AST *stmtNode : statementListNode->children) {
+    if (stmtNode->nodeType == NUL_NODE) continue;
+    if (stmtNode->nodeType == BLOCK_NODE) {
+      symbolTable.openScope();
+      processBlockNode(stmtNode);
+      symbolTable.closeScope();
+      continue;
+    }
+    assert(stmtNode->nodeType == STMT_NODE);
+    const STMTSemanticValue &statementSemanticValue =
+        std::get<STMTSemanticValue>(stmtNode->semanticValue);
+    switch (statementSemanticValue.kind) {
+      case IF_STMT:
+        // TODO:
+        break;
+      case FOR_STMT:
+        // TODO:
+        break;
+      case WHILE_STMT:
+        // TODO:
+        break;
+      case ASSIGN_STMT:
+        // TODO:
+        break;
+      case FUNCTION_CALL_STMT:
+        processFunctionCallStatement(stmtNode);
+        break;
+      case RETURN_STMT:
+        // TODO:
+        break;
+      default:
+        raiseError("Unknown stmtNode kind");
+    }
+  }
+}
+
+void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == FUNCTION_CALL_STMT);
+  assert(statementNode->children.size() == 2);
+
+  AST *functionNameIDNode = statementNode->children[0];
+  AST *parameterListNode = statementNode->children[1];
+
+  assert(functionNameIDNode->nodeType == IDENTIFIER_NODE);
+  const std::string functionName =
+      std::get<IdentifierSemanticValue>(functionNameIDNode->semanticValue).identifierName;
+  SymbolTableEntry *funcEntry = symbolTable.getSymbol(functionName);
+  if (funcEntry == nullptr) {
+    semanticError(functionNameIDNode->linenumber, "'", functionName,
+                  "' was not declared in this scope");
+    statementNode->dataType = ERROR_TYPE;
+    return;
+  }
+  if (funcEntry->symbolKind != FUNCTION_SYMBOL) {
+    semanticError(functionNameIDNode->linenumber, "called object '", functionName,
+                  "' is not a function (but ",
+                  (funcEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ",
+                  funcEntry->symbolKind, ")");
+    statementNode->dataType = ERROR_TYPE;
+    return;
+  }
+  assert(parameterListNode->nodeType == NONEMPTY_RELOP_EXPR_LIST_NODE ||
+         parameterListNode->nodeType == NUL_NODE);
+  const FunctionSignature &funcSignature = std::get<FunctionSignature>(funcEntry->attribute);
+  statementNode->dataType = funcSignature.returnType;
+  if (parameterListNode->children.size() != funcSignature.parameters.size()) {
+    if (parameterListNode->children.size() < funcSignature.parameters.size())
+      semanticError(functionNameIDNode->linenumber, "too few arguments to function '", functionName,
+                    "'");
+    else
+      semanticError(functionNameIDNode->linenumber, "too many arguments to function '",
+                    functionName, "'");
+    return;
+  }
+  for (size_t idx = 0; idx < parameterListNode->children.size(); ++idx) {
+    AST *parameterNode = parameterListNode->children[idx];
+    processExpressionComponent(parameterNode);
+    if (parameterNode->dataType.type == ERROR_TYPE) continue;
+    const TypeDescriptor &callTypeDesc = parameterNode->dataType;
+    const TypeDescriptor &funcTypeDesc = funcSignature.parameters[idx];
+    if (!isTypeCompatible(funcTypeDesc, callTypeDesc)) {
+      semanticError(parameterNode->linenumber, "incompatible type for argument ", idx + 1, " of '",
+                    functionName, "'");
+      continue;
+    }
+    // TODO: Anything to do if the types are compatible?
+  }
+  // TODO: Anything to do after checking all parameters?
 }
 
 void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
@@ -316,18 +595,22 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
   assert(declarator->nodeType == IDENTIFIER_NODE);
   IdentifierSemanticValue declaratorSemanticValue =
       std::get<IdentifierSemanticValue>(declarator->semanticValue);
-  TypeDescriptor declaratorTypeDesc = typeSpecifierTypeDesc;
-  if (declaratorSemanticValue.kind == NORMAL_ID) return declaratorTypeDesc;
+  if (declaratorSemanticValue.kind == NORMAL_ID || declaratorSemanticValue.kind == WITH_INIT_ID)
+    return typeSpecifierTypeDesc;
   assert(declaratorSemanticValue.kind == ARRAY_ID);
-  if (declaratorTypeDesc.type != ARR_TYPE) {
-    // Turn scalar type into array type
-    declaratorTypeDesc.arrayProperties.elementType = declaratorTypeDesc.type;
-    declaratorTypeDesc.arrayProperties.dimensions.clear();  // ensure the array dimension is empty
-    declaratorTypeDesc.type = ARR_TYPE;
-  }
+  TypeDescriptor declaratorTypeDesc;
+  declaratorTypeDesc.type = ARR_TYPE;
   ArrayProperties &arrayProperties = declaratorTypeDesc.arrayProperties;
+  if (typeSpecifierTypeDesc.type == ARR_TYPE)
+    arrayProperties.elementType = typeSpecifierTypeDesc.arrayProperties.elementType;
+  else
+    arrayProperties.elementType = typeSpecifierTypeDesc.type;
   bool anyError = false;
   for (AST *dimComponent : declarator->children) {
+    if (dimComponent->nodeType == NUL_NODE) {
+      arrayProperties.dimensions.push_back(EMPTY_DIM);
+      continue;
+    }
     processExpressionComponent(dimComponent);
     if (dimComponent->dataType.type == ERROR_TYPE) {
       anyError = true;
@@ -353,6 +636,10 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
     arrayProperties.dimensions.push_back(dimVal);
   }
   if (anyError) return ERROR_TYPE;
+  if (typeSpecifierTypeDesc.type == ARR_TYPE)
+    arrayProperties.dimensions.insert(arrayProperties.dimensions.end(),
+                                      typeSpecifierTypeDesc.arrayProperties.dimensions.begin(),
+                                      typeSpecifierTypeDesc.arrayProperties.dimensions.end());
 
   // TODO: remove debug code below
   std::cerr << "New array: ";
@@ -640,11 +927,4 @@ void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
     }
     identifierNode->dataType = resultTypeDesc;
   }
-}
-
-void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
-  assert(statementNode->nodeType == STMT_NODE);
-  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == FUNCTION_CALL_STMT);
-
-  // TODO: process function call
 }

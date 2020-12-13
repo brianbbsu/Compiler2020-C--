@@ -44,7 +44,9 @@ op_divide       "/"
 int_constant    {digit}+
 flt_constant    (({digit}*\.{digit}+|{digit}+\.)([eE][+-]?{digit}+)?)|({digit}+[eE][+-]?{digit}+)
 s-const         \"([^"\n])*\"
-comment	        "/*"(([^*])|([*]+[^/*]))*("*")+"/"
+block_comment	"/*"(([^*])|([*]+[^/*]))*("*")+"/"
+line_comment    "//".*
+comment         {block_comment}|{line_comment}
 ws              [ \t]+
 newline         "\n"
 mk_lparen       "("

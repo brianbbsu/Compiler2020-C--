@@ -25,13 +25,19 @@ class SemanticAnalysis {
   void tryUnaryConstEval(AST *exprNode, AST *operand, UNARY_OPERATOR op);
 
   DATA_TYPE getLargerType(DATA_TYPE type1, DATA_TYPE type2);
-
+  bool isTypeCompatible(const TypeDescriptor &lhsTypeDesc, const TypeDescriptor &rhsTypeDesc);
   void processProgramNode(AST *programNode);
   void processVariableDeclListNode(AST *variableDeclListNode);
   void processVariableDeclaration(AST *declarationNode);
   void processTypeDeclaration(AST *declarationNode);
+
   void processFunctionDeclaration(AST *declarationNode);  // only declare
   void processFunctionDefinition(AST *declarationNode);   // with definition
+  std::vector<TypeDescriptor> processParameterDeclList(AST *paramListNode);
+
+  void processBlockNode(AST *blockNode);
+  void processStatementListNode(AST *statementListNode);
+  void processFunctionCallStatement(AST *statementNode);
 
   void processTypeSpecifier(AST *typeSpecifier);
   TypeDescriptor getDeclaratorType(const TypeDescriptor &typeSpecifierTypeDesc, AST *declarator);
@@ -39,7 +45,6 @@ class SemanticAnalysis {
 
   void processExpressionComponent(AST *expressionComponent);  // every thing with a data type
   void processExpressionNode(AST *expressionNode);
-  void processFunctionCallStatement(AST *statementNode);
   void processConstNode(AST *constNode);
   void processIdentifierLValue(AST *identifierNode);
 

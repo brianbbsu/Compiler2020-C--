@@ -11,15 +11,10 @@
 
 enum SymbolKind { VARIABLE_SYMBOL, TYPE_SYMBOL, FUNCTION_SYMBOL, ENUMERATOR_SYMBOL };
 
-struct FunctionParameter {
-  TypeDescriptor type;
-  std::string name;
-};
-
 struct FunctionSignature {
   DATA_TYPE returnType;
-  std::vector<FunctionParameter> parameters;
-  // TODO: function forward declaration (declaration vs definition)?
+  std::vector<TypeDescriptor> parameters;
+  bool hasDefinition;
 };
 
 struct SymbolTableEntry {
@@ -39,6 +34,9 @@ class SymbolTable {
   std::unordered_map<std::string, entryStack> table;
   vstack<std::vector<entryStack *>> scopeModifiedStack;
 
+  bool hasStash;
+  std::vector<std::pair<entryStack *, SymbolTableEntry *>> rewindBuffer;
+
   SymbolTableEntry *_addSymbol(const std::string &name, SymbolTableEntry *entry);
 
  public:
@@ -46,6 +44,11 @@ class SymbolTable {
   void resetSymbolTable();
   void openScope();
   void closeScope();
+
+  void stashScope();
+  void popStash();
+  void dropStash();
+
   bool isGlobalScope();
   bool declaredLocally(const std::string &name);
   SymbolTableEntry *getSymbol(const std::string &name);

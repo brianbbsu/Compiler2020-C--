@@ -2,17 +2,20 @@
 
 #include <cassert>
 
-SymbolTable::SymbolTable() : currentLevel(-1) {}
+#include "print.hh"
+
+SymbolTable::SymbolTable() : currentLevel(-1), hasStash(false) {}
 
 void SymbolTable::resetSymbolTable() {
   while (currentLevel >= 0) closeScope();
+  if (hasStash) dropStash();
   openScope();  // open global scope
   // add builtin type and functions
   addTypeSymbol("int", TypeDescriptor(INT_TYPE));
   addTypeSymbol("float", TypeDescriptor(FLOAT_TYPE));
   addTypeSymbol("void", TypeDescriptor(VOID_TYPE));
-  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}});
-  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}});
+  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true});
+  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true});
   // TODO: how to handle write?
 }
 
@@ -29,6 +32,39 @@ void SymbolTable::closeScope() {
     ptr->pop();
   }
   scopeModifiedStack.pop();
+}
+
+void SymbolTable::stashScope() {
+  assert(currentLevel > 0);
+  assert(!hasStash);
+  for (entryStack *stackPtr : scopeModifiedStack.top()) {
+    rewindBuffer.push_back({stackPtr, stackPtr->top()});
+    stackPtr->pop();
+  }
+  scopeModifiedStack.pop();
+  currentLevel--;
+  hasStash = true;
+}
+
+void SymbolTable::popStash() {
+  assert(hasStash);
+  hasStash = false;
+  currentLevel++;
+  scopeModifiedStack.emplace();
+  for (auto [stackPtr, entry] : rewindBuffer) {
+    stackPtr->push(entry);
+    scopeModifiedStack.top().push_back(stackPtr);
+  }
+  rewindBuffer.clear();
+}
+
+void SymbolTable::dropStash() {
+  assert(hasStash);
+  hasStash = false;
+  for (auto [stackPtr, entry] : rewindBuffer) {
+    delete entry;
+  }
+  rewindBuffer.clear();
 }
 
 bool SymbolTable::declaredLocally(const std::string &name) {
@@ -67,7 +103,8 @@ SymbolTableEntry *SymbolTable::addTypeSymbol(const std::string &name, TypeDescri
 
 SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature) {
-  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(signature)};
+  SymbolTableEntry *entry =
+      new SymbolTableEntry{currentLevel, FUNCTION_SYMBOL, std::move(signature)};
   return _addSymbol(name, entry);
 }
 
