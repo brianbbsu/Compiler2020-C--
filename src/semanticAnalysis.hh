@@ -36,8 +36,13 @@ class SemanticAnalysis {
   std::vector<TypeDescriptor> processParameterDeclList(AST *paramListNode);
 
   void processBlockNode(AST *blockNode);
-  void processStatementListNode(AST *statementListNode);
+  void processStatement(AST *statementNode);
   void processFunctionCallStatement(AST *statementNode);
+  void processIfStatement(AST *statementNode);
+  void processForStatement(AST *statementNode);
+  void processWhileStatement(AST *statementNode);
+  void processAssignmentStatement(AST *statementNode);
+  void processReturnStatement(AST *statementNode);
 
   void processTypeSpecifier(AST *typeSpecifier);
   TypeDescriptor getDeclaratorType(const TypeDescriptor &typeSpecifierTypeDesc, AST *declarator);
@@ -46,6 +51,7 @@ class SemanticAnalysis {
   void processExpressionComponent(AST *expressionComponent);  // every thing with a data type
   void processExpressionNode(AST *expressionNode);
   void processConstNode(AST *constNode);
+  void processIdentifierRValue(AST *identifierNode);
   void processIdentifierLValue(AST *identifierNode);
 
  public:

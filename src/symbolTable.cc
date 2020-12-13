@@ -9,6 +9,7 @@ SymbolTable::SymbolTable() : currentLevel(-1), hasStash(false) {}
 void SymbolTable::resetSymbolTable() {
   while (currentLevel >= 0) closeScope();
   if (hasStash) dropStash();
+  currentFunctionEntry = nullptr;
   openScope();  // open global scope
   // add builtin type and functions
   addTypeSymbol("int", TypeDescriptor(INT_TYPE));
@@ -16,7 +17,7 @@ void SymbolTable::resetSymbolTable() {
   addTypeSymbol("void", TypeDescriptor(VOID_TYPE));
   addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true});
   addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true});
-  // TODO: how to handle write?
+  addFunctionSymbol("write", FunctionSignature{VOID_TYPE, {WRITE_PARAMETER_TYPE}, true});
 }
 
 void SymbolTable::openScope() {
@@ -70,6 +71,21 @@ void SymbolTable::dropStash() {
 bool SymbolTable::declaredLocally(const std::string &name) {
   auto ite = table.find(name);
   return ite != table.end() && ite->second.size() && ite->second.top()->level == currentLevel;
+}
+
+void SymbolTable::enterFunction(SymbolTableEntry *functionEntry) {
+  assert(currentFunctionEntry == nullptr);
+  currentFunctionEntry = functionEntry;
+}
+
+SymbolTableEntry *SymbolTable::getCurrentFunction() {
+  assert(currentFunctionEntry != nullptr);
+  return currentFunctionEntry;
+}
+
+void SymbolTable::leaveFunction() {
+  assert(currentFunctionEntry != nullptr);
+  currentFunctionEntry = nullptr;
 }
 
 bool SymbolTable::isGlobalScope() { return currentLevel == 0; }

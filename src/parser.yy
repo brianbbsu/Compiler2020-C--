@@ -504,10 +504,10 @@ nonempty_assign_expr_list : nonempty_assign_expr_list MK_COMMA assign_expr
 test  : assign_expr
       ;
 
-assign_expr : ID OP_ASSIGN relop_expr
+assign_expr : var_ref OP_ASSIGN relop_expr
                 {
                   $$ = makeStmtNode(ASSIGN_STMT);
-                  makeFamily($$, 2, makeIDNode($1, NORMAL_ID), $3);
+                  makeFamily($$, 2, $1, $3);
                 }
             | relop_expr
 		        ;

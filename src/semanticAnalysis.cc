@@ -128,6 +128,9 @@ bool SemanticAnalysis::isTypeCompatible(const TypeDescriptor &lhsTypeDesc,
       if (lhsArrayProperties.dimensions[idx] != rhsArrayProperties.dimensions[idx]) return false;
     return true;
   }
+  if (lhsTypeDesc.type == WRITE_PARAMETER_TYPE)
+    return rhsTypeDesc.type == INT_TYPE || rhsTypeDesc.type == FLOAT_TYPE ||
+           rhsTypeDesc.type == CONST_STRING_TYPE;
   if ((lhsTypeDesc.type == INT_TYPE || lhsTypeDesc.type == FLOAT_TYPE) &&
       (rhsTypeDesc.type == INT_TYPE || rhsTypeDesc.type == FLOAT_TYPE))
     return true;
@@ -371,6 +374,7 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
     return;
   }
   symbolTable.stashScope();  // stash to process function declaration
+  SymbolTableEntry *functionEntry = nullptr;
   if (symbolTable.declaredLocally(functionName)) {
     SymbolTableEntry *origEntry = symbolTable.getSymbol(functionName);
     if (origEntry->symbolKind != FUNCTION_SYMBOL) {
@@ -392,19 +396,26 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
       return;
     }
     origSignature.hasDefinition = true;
+    functionEntry = origEntry;
   } else {
-    symbolTable.addFunctionSymbol(functionName, {returnTypeDesc.type, std::move(parameters), true});
+    functionEntry = symbolTable.addFunctionSymbol(
+        functionName, {returnTypeDesc.type, std::move(parameters), true});
   }
+  assert(functionEntry != nullptr);
   symbolTable.popStash();
+  symbolTable.enterFunction(functionEntry);
   processBlockNode(bodyBlockNode);
+  symbolTable.leaveFunction();
   symbolTable.closeScope();
 }
 
 std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *paramListNode) {
   assert(paramListNode->nodeType == PARAM_LIST_NODE);
   std::vector<TypeDescriptor> parameterDeclList;
-  for (AST *child : paramListNode->children) {
+  for (size_t idx = 0; idx < paramListNode->children.size(); ++idx) {
+    AST *child = paramListNode->children[idx];
     if (child->nodeType != DECLARATION_NODE) {
+      // FIXME: forward declaration with array type parameter
       // Only type
       // This must be only a function declaration, which is enforced by the parser
       processTypeSpecifier(child);
@@ -437,6 +448,9 @@ std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *para
     assert(parameterNameSemanticValue.kind == NORMAL_ID ||
            parameterNameSemanticValue.kind == ARRAY_ID);
     const std::string parameterName = parameterNameSemanticValue.identifierName;
+    if (parameterTypeDesc.type == VOID_TYPE) {
+      // FIXME: void parameter
+    }
     if (symbolTable.declaredLocally(parameterName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(parameterName);
       if (origEntry->symbolKind != VARIABLE_SYMBOL) {
@@ -467,7 +481,7 @@ void SemanticAnalysis::processBlockNode(AST *blockNode) {
         processVariableDeclListNode(child);
         break;
       case STMT_LIST_NODE:
-        processStatementListNode(child);
+        for (AST *stmtNode : child->children) processStatement(stmtNode);
         break;
       default:
         raiseError("Unkonwn blockNode child node type");
@@ -475,41 +489,38 @@ void SemanticAnalysis::processBlockNode(AST *blockNode) {
   }
 }
 
-void SemanticAnalysis::processStatementListNode(AST *statementListNode) {
-  assert(statementListNode->nodeType == STMT_LIST_NODE);
-  for (AST *stmtNode : statementListNode->children) {
-    if (stmtNode->nodeType == NUL_NODE) continue;
-    if (stmtNode->nodeType == BLOCK_NODE) {
-      symbolTable.openScope();
-      processBlockNode(stmtNode);
-      symbolTable.closeScope();
-      continue;
-    }
-    assert(stmtNode->nodeType == STMT_NODE);
-    const STMTSemanticValue &statementSemanticValue =
-        std::get<STMTSemanticValue>(stmtNode->semanticValue);
-    switch (statementSemanticValue.kind) {
-      case IF_STMT:
-        // TODO:
-        break;
-      case FOR_STMT:
-        // TODO:
-        break;
-      case WHILE_STMT:
-        // TODO:
-        break;
-      case ASSIGN_STMT:
-        // TODO:
-        break;
-      case FUNCTION_CALL_STMT:
-        processFunctionCallStatement(stmtNode);
-        break;
-      case RETURN_STMT:
-        // TODO:
-        break;
-      default:
-        raiseError("Unknown stmtNode kind");
-    }
+void SemanticAnalysis::processStatement(AST *statementNode) {
+  if (statementNode->nodeType == NUL_NODE) return;
+  if (statementNode->nodeType == BLOCK_NODE) {
+    symbolTable.openScope();
+    processBlockNode(statementNode);
+    symbolTable.closeScope();
+    return;
+  }
+  assert(statementNode->nodeType == STMT_NODE);
+  const STMTSemanticValue &statementSemanticValue =
+      std::get<STMTSemanticValue>(statementNode->semanticValue);
+  switch (statementSemanticValue.kind) {
+    case IF_STMT:
+      processIfStatement(statementNode);
+      break;
+    case FOR_STMT:
+      processForStatement(statementNode);
+      break;
+    case WHILE_STMT:
+      processWhileStatement(statementNode);
+      break;
+    case ASSIGN_STMT:
+      processAssignmentStatement(statementNode);
+      break;
+    case FUNCTION_CALL_STMT:
+      processFunctionCallStatement(statementNode);
+      break;
+    case RETURN_STMT:
+      processReturnStatement(statementNode);
+      break;
+    default:
+      raiseError("Unknown statementNode kind");
   }
 }
 
@@ -558,18 +569,168 @@ void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
     if (parameterNode->dataType.type == ERROR_TYPE) continue;
     const TypeDescriptor &callTypeDesc = parameterNode->dataType;
     const TypeDescriptor &funcTypeDesc = funcSignature.parameters[idx];
+    if (callTypeDesc.type == VOID_TYPE) {
+      semanticError(parameterNode->linenumber, "invalid use of void expression");
+      continue;
+    }
     if (!isTypeCompatible(funcTypeDesc, callTypeDesc)) {
       semanticError(parameterNode->linenumber, "incompatible type for argument ", idx + 1, " of '",
                     functionName, "'");
       continue;
     }
-    // TODO: Anything to do if the types are compatible?
   }
-  // TODO: Anything to do after checking all parameters?
+}
+
+void SemanticAnalysis::processIfStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == IF_STMT);
+  assert(statementNode->children.size() == 3);
+
+  AST *testNode = statementNode->children[0];
+  AST *trueStatement = statementNode->children[1];
+  AST *falseStatement = statementNode->children[2];
+
+  processExpressionComponent(testNode);
+  if (testNode->dataType.type != ERROR_TYPE && testNode->dataType.type != INT_TYPE &&
+      testNode->dataType.type != FLOAT_TYPE) {
+    if (testNode->dataType.type == VOID_TYPE) {
+      semanticError(testNode->linenumber, "void value not ignored as it ought to be");
+    } else {
+      semanticError(testNode->linenumber, "expect scalar type but found type '", testNode->dataType,
+                    "'");
+    }
+  }
+  processStatement(trueStatement);
+  processStatement(falseStatement);
+}
+
+void SemanticAnalysis::processForStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == FOR_STMT);
+  assert(statementNode->children.size() == 4);
+
+  AST *initList = statementNode->children[0];
+  AST *condList = statementNode->children[1];
+  AST *iterList = statementNode->children[2];
+  AST *bodyStatement = statementNode->children[3];
+
+  if (initList->nodeType != NUL_NODE)
+    for (AST *child : initList->children) processExpressionComponent(child);
+  if (condList->nodeType != NUL_NODE) {
+    for (size_t idx = 0; idx < condList->children.size(); ++idx) {
+      AST *child = condList->children[idx];
+      processExpressionComponent(child);
+      if (idx + 1 == condList->children.size()) {
+        if (child->dataType.type != ERROR_TYPE && child->dataType.type != INT_TYPE &&
+            child->dataType.type != FLOAT_TYPE) {
+          if (child->dataType.type == VOID_TYPE) {
+            semanticError(child->linenumber, "void value not ignored as it ought to be");
+          } else {
+            semanticError(child->linenumber, "expect scalar type but found type '", child->dataType,
+                          "'");
+          }
+        }
+      }
+    }
+  }
+  if (iterList->nodeType != NUL_NODE)
+    for (AST *child : iterList->children) processExpressionComponent(child);
+  processStatement(bodyStatement);
+}
+
+void SemanticAnalysis::processWhileStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == WHILE_STMT);
+  assert(statementNode->children.size() == 2);
+
+  AST *testNode = statementNode->children[0];
+  AST *bodyStatement = statementNode->children[1];
+
+  processExpressionComponent(testNode);
+  if (testNode->dataType.type != ERROR_TYPE && testNode->dataType.type != INT_TYPE &&
+      testNode->dataType.type != FLOAT_TYPE) {
+    if (testNode->dataType.type == VOID_TYPE) {
+      semanticError(testNode->linenumber, "void value not ignored as it ought to be");
+    } else {
+      semanticError(testNode->linenumber, "expect scalar type but found type '", testNode->dataType,
+                    "'");
+    }
+  }
+  processStatement(bodyStatement);
+}
+
+void SemanticAnalysis::processAssignmentStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == ASSIGN_STMT);
+  assert(statementNode->children.size() == 2);
+
+  AST *lhsIDNode = statementNode->children[0];
+  AST *rhsExprNode = statementNode->children[1];
+
+  processIdentifierLValue(lhsIDNode);
+  processExpressionComponent(rhsExprNode);
+  if (lhsIDNode->dataType.type == ERROR_TYPE || rhsExprNode->dataType.type == ERROR_TYPE) {
+    statementNode->dataType = ERROR_TYPE;
+    return;
+  }
+  if (rhsExprNode->dataType.type == VOID_TYPE) {
+    semanticError(rhsExprNode->linenumber, "void value not ignored as it ought to be");
+    statementNode->dataType = ERROR_TYPE;
+    return;
+  }
+  if (!isTypeCompatible(lhsIDNode->dataType, rhsExprNode->dataType)) {
+    semanticError(statementNode->linenumber, "incompatible types when assigning to type '",
+                  lhsIDNode->dataType, "' from type '", rhsExprNode->dataType, "'");
+    statementNode->dataType = ERROR_TYPE;
+    return;
+  }
+  statementNode->dataType = lhsIDNode->dataType;
+}
+
+void SemanticAnalysis::processReturnStatement(AST *statementNode) {
+  assert(statementNode->nodeType == STMT_NODE);
+  assert(std::get<STMTSemanticValue>(statementNode->semanticValue).kind == RETURN_STMT);
+  assert(statementNode->children.size() == 1);
+
+  AST *exprNode = statementNode->children[0];
+  SymbolTableEntry *funcEntry = symbolTable.getCurrentFunction();
+  const TypeDescriptor &funcReturnTypeDesc =
+      std::get<FunctionSignature>(funcEntry->attribute).returnType;
+  if (exprNode->nodeType == NUL_NODE) {
+    if (funcReturnTypeDesc.type != VOID_TYPE) {
+      semanticError(statementNode->linenumber,
+                    "'return' with no value, in function returning non-void");
+      return;
+    }
+    // no error
+    return;
+  }
+  processExpressionComponent(exprNode);
+  const TypeDescriptor &exprTypeDesc = exprNode->dataType;
+  if (exprTypeDesc.type == ERROR_TYPE) return;
+  if (exprTypeDesc.type == VOID_TYPE) {
+    if (funcReturnTypeDesc.type != VOID_TYPE) {
+      semanticError(exprNode->linenumber, "void value not ignored as it ought to be");
+      return;
+    }
+    // no error
+    return;
+  }
+  if (funcReturnTypeDesc.type == VOID_TYPE) {
+    semanticError(exprNode->linenumber, "'return' with a value, in function returning void");
+    return;
+  }
+  if (!isTypeCompatible(funcReturnTypeDesc, exprTypeDesc)) {
+    semanticError(exprNode->linenumber, "incompatible types when returning type '", exprTypeDesc,
+                  "' but '", funcReturnTypeDesc, "' was expected");
+    return;
+  }
 }
 
 void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
   if (typeSpecifier->nodeType == IDENTIFIER_NODE) {
+    // FIXME: type specifier of array type
+    assert(std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).kind == NORMAL_ID);
     const std::string &typeName =
         std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).identifierName;
     SymbolTableEntry *typeEntry = symbolTable.getSymbol(typeName);
@@ -640,12 +801,6 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
     arrayProperties.dimensions.insert(arrayProperties.dimensions.end(),
                                       typeSpecifierTypeDesc.arrayProperties.dimensions.begin(),
                                       typeSpecifierTypeDesc.arrayProperties.dimensions.end());
-
-  // TODO: remove debug code below
-  std::cerr << "New array: ";
-  for (size_t _i = 0; _i < arrayProperties.dimensions.size(); ++_i)
-    std::cerr << arrayProperties.dimensions[_i]
-              << " \n"[_i + 1 == arrayProperties.dimensions.size()];
 
   return declaratorTypeDesc;
 }
@@ -734,13 +889,22 @@ void SemanticAnalysis::processExpressionComponent(AST *expressionComponent) {
       processExpressionNode(expressionComponent);
       break;
     case STMT_NODE:
-      processFunctionCallStatement(expressionComponent);
+      switch (std::get<STMTSemanticValue>(expressionComponent->semanticValue).kind) {
+        case FUNCTION_CALL_STMT:
+          processFunctionCallStatement(expressionComponent);
+          break;
+        case ASSIGN_STMT:
+          processAssignmentStatement(expressionComponent);
+          break;
+        default:
+          raiseError("Unknown statement kind in expression");
+      }
       break;
     case CONST_VALUE_NODE:
       processConstNode(expressionComponent);
       break;
     case IDENTIFIER_NODE:
-      processIdentifierLValue(expressionComponent);
+      processIdentifierRValue(expressionComponent);
       break;
     default:
       raiseError("Unknown expression component node type");
@@ -855,40 +1019,40 @@ void SemanticAnalysis::processConstNode(AST *constNode) {
   }
 }
 
-void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
+void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
   assert(identifierNode->nodeType == IDENTIFIER_NODE);
-  IdentifierSemanticValue &idSemnticValue =
+  IdentifierSemanticValue &idSemanticValue =
       std::get<IdentifierSemanticValue>(identifierNode->semanticValue);
-  assert(idSemnticValue.kind == NORMAL_ID || idSemnticValue.kind == ARRAY_ID);
+  assert(idSemanticValue.kind == NORMAL_ID || idSemanticValue.kind == ARRAY_ID);
 
-  SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemnticValue.identifierName);
+  SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemanticValue.identifierName);
   if (idEntry == nullptr) {
-    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
+    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
                   "' was not declared in this scope");
     identifierNode->dataType = ERROR_TYPE;
     return;
   } else if (!(idEntry->symbolKind == VARIABLE_SYMBOL ||
                idEntry->symbolKind == ENUMERATOR_SYMBOL)) {
-    semanticError(identifierNode->linenumber, "'", idSemnticValue.identifierName,
+    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
                   "' is not a variable nor an enumerator (but a ", idEntry->symbolKind, ")");
     identifierNode->dataType = ERROR_TYPE;
     return;
   }
   if (idEntry->symbolKind == ENUMERATOR_SYMBOL) {
-    if (idSemnticValue.kind == ARRAY_ID) {
+    if (idSemanticValue.kind == ARRAY_ID) {
       semanticError(identifierNode->linenumber,
                     "subscripted value is neither array nor pointer nor vector");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }
-    idSemnticValue.isEnumerator = true;
-    idSemnticValue.enumeratorValue = std::get<int>(idEntry->attribute);
+    idSemanticValue.isEnumerator = true;
+    idSemanticValue.enumeratorValue = std::get<int>(idEntry->attribute);
     identifierNode->dataType = INT_TYPE;
     return;
   }
   assert(idEntry->symbolKind == VARIABLE_SYMBOL);
   const TypeDescriptor &variableTypeDesc = std::get<TypeDescriptor>(idEntry->attribute);
-  if (idSemnticValue.kind == NORMAL_ID) {
+  if (idSemanticValue.kind == NORMAL_ID) {
     identifierNode->dataType = variableTypeDesc;
   } else {  // ARRAY_ID
     bool anyError = false;
@@ -926,5 +1090,69 @@ void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
       dimVec.erase(dimVec.begin(), dimVec.begin() + index_dim);
     }
     identifierNode->dataType = resultTypeDesc;
+  }
+}
+
+void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
+  assert(identifierNode->nodeType == IDENTIFIER_NODE);
+  const IdentifierSemanticValue &idSemanticValue =
+      std::get<IdentifierSemanticValue>(identifierNode->semanticValue);
+  assert(idSemanticValue.kind == NORMAL_ID || idSemanticValue.kind == ARRAY_ID);
+  SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemanticValue.identifierName);
+  if (idEntry == nullptr) {
+    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
+                  "' was not declared in this scope");
+    identifierNode->dataType = ERROR_TYPE;
+    return;
+  }
+  if (idEntry->symbolKind != VARIABLE_SYMBOL) {
+    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
+                  "' is not a variable (but ",
+                  (idEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ", idEntry->symbolKind,
+                  ")");
+    identifierNode->dataType = ERROR_TYPE;
+    return;
+  }
+  const TypeDescriptor &variableTypeDesc = std::get<TypeDescriptor>(idEntry->attribute);
+  if (idSemanticValue.kind == ARRAY_ID) {
+    bool anyError = false;
+    size_t index_dim = 0;
+    for (AST *dimComponent : identifierNode->children) {
+      processExpressionComponent(dimComponent);
+      if (dimComponent->dataType.type == ERROR_TYPE) {
+        anyError = true;
+        break;
+      } else if (dimComponent->dataType.type != INT_TYPE) {
+        semanticError(identifierNode->linenumber, "array subscript is not an integer");
+        anyError = true;
+        break;
+      }
+      ++index_dim;
+    }
+    if (anyError) {
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    assert(index_dim > 0);
+    if (variableTypeDesc.type != ARR_TYPE ||
+        index_dim > variableTypeDesc.arrayProperties.dimensions.size()) {
+      semanticError(identifierNode->linenumber,
+                    "subscripted value is neither array nor pointer nor vector");
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    if (index_dim < variableTypeDesc.arrayProperties.dimensions.size()) {
+      semanticError(identifierNode->linenumber, "assignment to expression with array type");
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    identifierNode->dataType = variableTypeDesc.arrayProperties.elementType;
+  } else {  // NORMAL ID
+    if (variableTypeDesc.type == ARR_TYPE) {
+      semanticError(identifierNode->linenumber, "assignment to expression with array type");
+      identifierNode->dataType = ERROR_TYPE;
+      return;
+    }
+    identifierNode->dataType = variableTypeDesc.type;
   }
 }

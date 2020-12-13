@@ -8,8 +8,9 @@
 #include "header.hh"
 #include "symbolTable.hh"
 
-const std::string DATA_TYPE_str[] = {"int",          "float",     "void",      "ARR_TYPE",
-                                     "const string", "NONE_TYPE", "ERROR_TYPE"};
+const std::string DATA_TYPE_str[] = {"int",       "float",        "void",
+                                     "ARR_TYPE",  "const string", "WRITE_PARAMETER_TYPE",
+                                     "NONE_TYPE", "ERROR_TYPE"};
 
 const std::string IDENTIFIER_KIND_str[] = {"NORMAL_ID", "ARRAY_ID", "WITH_INIT_ID"};
 

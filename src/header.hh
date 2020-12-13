@@ -30,7 +30,8 @@ enum DATA_TYPE {
   FLOAT_TYPE,
   VOID_TYPE,
   ARR_TYPE,
-  CONST_STRING_TYPE,  // for "const string"
+  CONST_STRING_TYPE,     // for "const string"
+  WRITE_PARAMETER_TYPE,  // for write()
   NONE_TYPE,
   ERROR_TYPE
 };

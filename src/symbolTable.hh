@@ -31,6 +31,7 @@ class SymbolTable {
   using entryStack = vstack<SymbolTableEntry *>;
 
   int currentLevel;
+  SymbolTableEntry *currentFunctionEntry;
   std::unordered_map<std::string, entryStack> table;
   vstack<std::vector<entryStack *>> scopeModifiedStack;
 
@@ -48,6 +49,10 @@ class SymbolTable {
   void stashScope();
   void popStash();
   void dropStash();
+
+  void enterFunction(SymbolTableEntry *functionEntry);
+  SymbolTableEntry *getCurrentFunction();
+  void leaveFunction();
 
   bool isGlobalScope();
   bool declaredLocally(const std::string &name);
