@@ -128,12 +128,12 @@
 %token <Const>CONST "constant"
 
 %nterm <AST*> program func_def non_global_block func_body type param expr_null expr
-%nterm <AST*> func_decl type_decl var_decl decl cexpr relop_expr init_id
+%nterm <AST*> func_decl type_decl var_decl global_decl non_global_decl cexpr relop_expr init_id
 %nterm <AST*> stmt test assign_expr_list relop_expr_list var_ref assign_expr rel_op enum_type
 %nterm <AST*> relop_term relop_factor add_op mul_op term factor unary_op enum_type_def enum_type_ref
 
-%nterm <std::vector<AST*>> global_block decl_list stmt_list param_list type_list
-%nterm <std::vector<AST*>> func_head_with_param_name func_head_without_param func_head_with_only_type
+%nterm <std::vector<AST*>> global_block global_decl_list non_global_decl_list stmt_list param_list
+%nterm <std::vector<AST*>> func_head_with_param func_head_without_param
 %nterm <std::vector<AST*>> dim_fn enum_def_list id_list init_id_list dim_decl nonempty_assign_expr_list
 %nterm <std::vector<AST*>> nonempty_relop_expr_list dim_list
 
@@ -150,7 +150,7 @@ program : global_block
             }
         ;
 
-global_block  : global_block decl_list func_def
+global_block  : global_block global_decl_list func_def
                   {
                     AST *decl_list = makeChild(new AST(VARIABLE_DECL_LIST_NODE), $2);
                     $$ = std::move($1);
@@ -164,13 +164,13 @@ global_block  : global_block decl_list func_def
               | %empty {}
               ;
 
-non_global_block  : decl_list stmt_list
+non_global_block  : non_global_decl_list stmt_list
                       {
                         $$ = new AST(BLOCK_NODE);
                         makeFamily($$, 2, makeChild(new AST(VARIABLE_DECL_LIST_NODE), $1),
                                           makeChild(new AST(STMT_LIST_NODE), $2));
                       }
-                  | decl_list
+                  | non_global_decl_list
                       {
                         $$ = new AST(BLOCK_NODE);
                         makeChild($$, makeChild(new AST(VARIABLE_DECL_LIST_NODE), $1));
@@ -183,7 +183,7 @@ non_global_block  : decl_list stmt_list
                   | %empty { $$ = new AST(BLOCK_NODE); }
                   ;
 
-func_def  : func_head_with_param_name func_body
+func_def  : func_head_with_param func_body
               {
                 $$ = makeDeclNode(FUNCTION_DECL);
                 makeChild($$, $1);
@@ -197,25 +197,15 @@ func_def  : func_head_with_param_name func_body
               }
           ;
 
-func_head_with_param_name : type ID MK_LPAREN param_list MK_RPAREN
-                              {
-                                AST *parameterList = new AST(PARAM_LIST_NODE);
-                                makeChild(parameterList, $4);
-                                $$.push_back($1);
-                                $$.push_back(makeIDNode($2, NORMAL_ID));
-                                $$.push_back(parameterList);
-                              }
-                          ;
-
-func_head_with_only_type  : type ID MK_LPAREN type_list MK_RPAREN
-                              {
-                                AST *parameterList = new AST(PARAM_LIST_NODE);
-                                makeChild(parameterList, $4);
-                                $$.push_back($1);
-                                $$.push_back(makeIDNode($2, NORMAL_ID));
-                                $$.push_back(parameterList);
-                              }
-                          ;
+func_head_with_param  : type ID MK_LPAREN param_list MK_RPAREN
+                          {
+                            AST *parameterList = new AST(PARAM_LIST_NODE);
+                            makeChild(parameterList, $4);
+                            $$.push_back($1);
+                            $$.push_back(makeIDNode($2, NORMAL_ID));
+                            $$.push_back(parameterList);
+                          }
+                      ;
 
 func_head_without_param : type ID MK_LPAREN MK_RPAREN
                             {
@@ -247,15 +237,17 @@ param : type ID
             $$ = makeDeclNode(FUNCTION_PARAMETER_DECL);
             makeFamily($$, 2, $1, makeChild(makeIDNode($2, ARRAY_ID), $3));
           }
+      | type
+          {
+            $$ = makeDeclNode(FUNCTION_PARAMETER_DECL);
+            makeFamily($$, 2, $1, makeIDNode("", NORMAL_ID));
+          }
+      | type dim_fn
+          {
+            $$ = makeDeclNode(FUNCTION_PARAMETER_DECL);
+            makeFamily($$, 2, $1, makeChild(makeIDNode("", ARRAY_ID), $2));
+          }
       ;
-
-type_list : type_list MK_COMMA type
-              {
-                $$ = std::move($1);
-                $$.push_back($3);
-              }
-          | type { $$.push_back($1); }
-          ;
 
 dim_fn  : MK_LB expr_null MK_RB { $$.push_back($2); }
         | dim_fn MK_LB expr MK_RB
@@ -269,18 +261,30 @@ expr_null : expr
           | %empty { $$ = new AST(NUL_NODE); }
           ;
 
-decl_list : decl_list decl
-              {
-                $$ = std::move($1);
-                $$.push_back($2);
-              }
-          | decl { $$.push_back($1); }
-          ;
+global_decl_list  : global_decl_list global_decl
+                      {
+                        $$ = std::move($1);
+                        $$.push_back($2);
+                      }
+                  | global_decl { $$.push_back($1); }
+                  ;
 
-decl  : type_decl
-      | var_decl
-      | func_decl
-      ;
+non_global_decl_list  : non_global_decl_list non_global_decl
+                          {
+                            $$ = std::move($1);
+                            $$.push_back($2);
+                          }
+                      | non_global_decl { $$.push_back($1); }
+                      ;
+
+global_decl : type_decl
+            | var_decl
+            | func_decl
+            ;
+
+non_global_decl : type_decl
+                | var_decl
+                ;
 
 type_decl : TYPEDEF type id_list MK_SEMICOLON
               {
@@ -305,12 +309,7 @@ var_decl  : type init_id_list MK_SEMICOLON
               }
           ;
 
-func_decl : func_head_with_param_name MK_SEMICOLON
-              {
-                $$ = makeDeclNode(FUNCTION_DECL);
-                makeChild($$, $1);
-              }
-          | func_head_with_only_type MK_SEMICOLON
+func_decl : func_head_with_param MK_SEMICOLON
               {
                 $$ = makeDeclNode(FUNCTION_DECL);
                 makeChild($$, $1);

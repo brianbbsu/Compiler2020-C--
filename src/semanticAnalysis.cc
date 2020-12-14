@@ -320,7 +320,7 @@ void SemanticAnalysis::processFunctionDeclaration(AST *declarationNode) {
   }
 
   symbolTable.openScope();
-  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode);
+  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode, false);
   symbolTable.closeScope();
   if (parameterListNode->dataType.type == ERROR_TYPE) return;
   if (symbolTable.declaredLocally(functionName)) {
@@ -368,7 +368,7 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   }
 
   symbolTable.openScope();
-  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode);
+  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode, true);
   if (parameterListNode->dataType.type == ERROR_TYPE) {
     symbolTable.closeScope();  // skip this function
     return;
@@ -409,24 +409,12 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   symbolTable.closeScope();
 }
 
-std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *paramListNode) {
+std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *paramListNode,
+                                                                       bool isDefinition) {
   assert(paramListNode->nodeType == PARAM_LIST_NODE);
   std::vector<TypeDescriptor> parameterDeclList;
   for (size_t idx = 0; idx < paramListNode->children.size(); ++idx) {
     AST *child = paramListNode->children[idx];
-    if (child->nodeType != DECLARATION_NODE) {
-      // FIXME: forward declaration with array type parameter
-      // Only type
-      // This must be only a function declaration, which is enforced by the parser
-      processTypeSpecifier(child);
-      if (child->dataType.type == ERROR_TYPE) {
-        paramListNode->dataType = ERROR_TYPE;
-        parameterDeclList.push_back(ERROR_TYPE);
-        continue;
-      }
-      parameterDeclList.push_back(child->dataType);
-      continue;
-    }
     assert(std::get<DECLSemanticValue>(child->semanticValue).kind == FUNCTION_PARAMETER_DECL);
     assert(child->children.size() == 2);
     AST *typeSpecifierNode = child->children[0];
@@ -440,17 +428,36 @@ std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *para
     const TypeDescriptor &typeSpecifierTypeDesc = typeSpecifierNode->dataType;
     TypeDescriptor parameterTypeDesc =
         getDeclaratorType(typeSpecifierTypeDesc, parameterNameIDNode);
+    if (parameterTypeDesc.type == ERROR_TYPE) {
+      paramListNode->dataType = ERROR_TYPE;
+      parameterDeclList.push_back(ERROR_TYPE);
+      continue;
+    }
     if (parameterTypeDesc.type == ARR_TYPE)
       parameterTypeDesc.arrayProperties.dimensions[0] = EMPTY_DIM;  // ignore first dimension
     parameterDeclList.push_back(parameterTypeDesc);
+
     const IdentifierSemanticValue &parameterNameSemanticValue =
         std::get<IdentifierSemanticValue>(parameterNameIDNode->semanticValue);
     assert(parameterNameSemanticValue.kind == NORMAL_ID ||
            parameterNameSemanticValue.kind == ARRAY_ID);
+
     const std::string parameterName = parameterNameSemanticValue.identifierName;
-    if (parameterTypeDesc.type == VOID_TYPE) {
-      // FIXME: void parameter
+
+    if (parameterName == "") {
+      if (isDefinition)
+        semanticError(child->linenumber, "parameter name omitted");
+      else if (parameterTypeDesc.type == VOID_TYPE)
+        semanticError(child->linenumber, "parameter ", idx + 1, " has void type");
+      continue;
     }
+
+    if (parameterTypeDesc.type == VOID_TYPE) {
+      semanticError(child->linenumber, "parameter ", idx + 1, " ('", parameterName,
+                    "') has void type");
+      continue;
+    }
+
     if (symbolTable.declaredLocally(parameterName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(parameterName);
       if (origEntry->symbolKind != VARIABLE_SYMBOL) {
@@ -729,7 +736,6 @@ void SemanticAnalysis::processReturnStatement(AST *statementNode) {
 
 void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
   if (typeSpecifier->nodeType == IDENTIFIER_NODE) {
-    // FIXME: type specifier of array type
     assert(std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).kind == NORMAL_ID);
     const std::string &typeName =
         std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).identifierName;
@@ -756,6 +762,7 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
   assert(declarator->nodeType == IDENTIFIER_NODE);
   IdentifierSemanticValue declaratorSemanticValue =
       std::get<IdentifierSemanticValue>(declarator->semanticValue);
+  const std::string &declaratorName = declaratorSemanticValue.identifierName;
   if (declaratorSemanticValue.kind == NORMAL_ID || declaratorSemanticValue.kind == WITH_INIT_ID)
     return typeSpecifierTypeDesc;
   assert(declaratorSemanticValue.kind == ARRAY_ID);
@@ -777,20 +784,29 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
       anyError = true;
       continue;
     } else if (dimComponent->dataType.type != INT_TYPE) {
-      semanticError(declarator->linenumber, "size of array '",
-                    declaratorSemanticValue.identifierName, "' has non-integer type");
+      if (declaratorName == "")
+        semanticError(declarator->linenumber, "size of unnamed array has non-integer type");
+      else
+        semanticError(declarator->linenumber, "size of array '", declaratorName,
+                      "' has non-integer type");
       anyError = true;
       break;
     } else if (!isConst(dimComponent)) {
-      semanticError(declarator->linenumber, "size of array '",
-                    declaratorSemanticValue.identifierName, "' is not a constant");
+      if (declaratorName == "")
+        semanticError(declarator->linenumber, "size of unnamed array is not a constant");
+      else
+        semanticError(declarator->linenumber, "size of array '", declaratorName,
+                      "' is not a constant");
       anyError = true;
       break;
     }
     int dimVal = getConstValue<int>(dimComponent);
     if (dimVal <= 0) {
-      semanticError(declarator->linenumber, "size of array '",
-                    declaratorSemanticValue.identifierName, "' is not positive");
+      if (declaratorName == "")
+        semanticError(declarator->linenumber, "size of unnamed array is not positive");
+      else
+        semanticError(declarator->linenumber, "size of array '", declaratorName,
+                      "' is not positive");
       anyError = true;
       break;
     }
