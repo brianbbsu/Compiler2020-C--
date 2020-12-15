@@ -8,6 +8,10 @@
 #include "header.hh"
 #include "symbolTable.hh"
 
+#define ANSI_RED "\x1b[31m"
+#define ANSI_BOLD "\x1b[1m"
+#define ANSI_RESET "\x1b[0m"
+
 const std::string DATA_TYPE_str[] = {"int",       "float",        "void",
                                      "ARR_TYPE",  "const string", "WRITE_PARAMETER_TYPE",
                                      "NONE_TYPE", "ERROR_TYPE"};

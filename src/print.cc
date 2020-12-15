@@ -54,6 +54,14 @@ void ASTPrinter::printGVNode(AST *node, int nodeID) {
     case CONST_VALUE_NODE:
       os << " " << std::get<Const>(node->semanticValue);
       break;
+    case EXPR_NODE:
+      {
+        const EXPRSemanticValue &exprSemanticValue = std::get<EXPRSemanticValue>(node->semanticValue);
+        if (exprSemanticValue.kind == UNARY_OPERATION)
+          os << " " << UNARY_OPERATOR_str[(size_t)std::get<UNARY_OPERATOR>(exprSemanticValue.op)];
+        else
+          os << " " << BINARY_OPERATOR_str[(size_t)std::get<BINARY_OPERATOR>(exprSemanticValue.op)];
+      }
     default:
       break;
   }

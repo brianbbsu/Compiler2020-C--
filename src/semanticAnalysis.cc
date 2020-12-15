@@ -7,7 +7,8 @@
 
 #include "print.hh"
 
-SemanticAnalysis::SemanticAnalysis(AST *_prog) : prog(_prog), symbolTable() {}
+SemanticAnalysis::SemanticAnalysis(AST *_prog, const std::string &_inputFilename)
+    : prog(_prog), inputFilename(_inputFilename), symbolTable() {}
 
 void SemanticAnalysis::runAnalysis() {
   symbolTable.resetSymbolTable();
@@ -212,44 +213,44 @@ void SemanticAnalysis::processVariableDeclaration(AST *declarationNode) {
       processExpressionComponent(initValueNode);
       if (initValueNode->dataType.type == ERROR_TYPE) break;
       if (variableTypeDesc.type == ARR_TYPE) {
-        semanticError(variableIDNode->linenumber, "cannot declare array variable with initializer");
+        semanticError(variableIDNode, "cannot declare array variable with initializer");
         continue;
       }
       if (!isTypeCompatible(variableTypeDesc, initValueNode->dataType)) {
-        semanticError(initValueNode->linenumber, "invalid initializer");
+        semanticError(initValueNode, "invalid initializer");
         continue;
       }
       if (symbolTable.isGlobalScope() && !isConst(initValueNode)) {
-        semanticError(initValueNode->linenumber, "initializer element is not constant");
+        semanticError(initValueNode, "initializer element is not constant");
         continue;
       }
     }
     // Step 4
     if (variableTypeDesc.type == VOID_TYPE) {
-      semanticError(variableIDNode->linenumber, "variable or field '",
-                    variableSemanticValue.identifierName, "' declared void");
+      semanticError(variableIDNode, "variable or field '", variableSemanticValue.identifierName,
+                    "' declared void");
       continue;
     }
     if (variableTypeDesc.type == ARR_TYPE &&
         variableTypeDesc.arrayProperties.elementType == VOID_TYPE) {
-      semanticError(variableIDNode->linenumber, "declaration of ‘",
-                    variableSemanticValue.identifierName, "’ as array of voids");
+      semanticError(variableIDNode, "declaration of ‘", variableSemanticValue.identifierName,
+                    "’ as array of voids");
       continue;
     }
     if (symbolTable.declaredLocally(variableSemanticValue.identifierName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(variableSemanticValue.identifierName);
       if (origEntry->symbolKind != VARIABLE_SYMBOL) {
-        semanticError(variableIDNode->linenumber, "'", variableSemanticValue.identifierName,
+        semanticError(variableIDNode, "'", variableSemanticValue.identifierName,
                       "' redeclared as different kind of symbol");
         continue;
       }
       TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
       if (origTypeDesc == variableTypeDesc) {
-        semanticError(variableIDNode->linenumber, "redeclaration of '",
-                      variableSemanticValue.identifierName, "'");
+        semanticError(variableIDNode, "redeclaration of '", variableSemanticValue.identifierName,
+                      "'");
         continue;
       } else {
-        semanticError(variableIDNode->linenumber, "conflicting types for '",
+        semanticError(variableIDNode, "conflicting types for '",
                       variableSemanticValue.identifierName, "'");
         continue;
       }
@@ -280,13 +281,13 @@ void SemanticAnalysis::processTypeDeclaration(AST *declarationNode) {
     if (symbolTable.declaredLocally(declaratorSemanticValue.identifierName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(declaratorSemanticValue.identifierName);
       if (origEntry->symbolKind != TYPE_SYMBOL) {
-        semanticError(declaratorIDNode->linenumber, "'", declaratorSemanticValue.identifierName,
+        semanticError(declaratorIDNode, "'", declaratorSemanticValue.identifierName,
                       "' redeclared as different kind of symbol");
         continue;
       }
       TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
       if (!(origTypeDesc == declaratorTypeDesc)) {
-        semanticError(declaratorIDNode->linenumber, "conflicting types for '",
+        semanticError(declaratorIDNode, "conflicting types for '",
                       declaratorSemanticValue.identifierName, "'");
       }
       continue;  // allow redeclaration of the same type
@@ -314,7 +315,7 @@ void SemanticAnalysis::processFunctionDeclaration(AST *declarationNode) {
   const TypeDescriptor &returnTypeDesc = typeSpecifierNode->dataType;
   if (returnTypeDesc.type == ERROR_TYPE) return;
   if (returnTypeDesc.type == ARR_TYPE) {
-    semanticError(functionNameIDNode->linenumber, "'", functionName,
+    semanticError(functionNameIDNode, "'", functionName,
                   "' declared as function returning an array");
     return;
   }
@@ -326,14 +327,14 @@ void SemanticAnalysis::processFunctionDeclaration(AST *declarationNode) {
   if (symbolTable.declaredLocally(functionName)) {
     SymbolTableEntry *origEntry = symbolTable.getSymbol(functionName);
     if (origEntry->symbolKind != FUNCTION_SYMBOL) {
-      semanticError(functionNameIDNode->linenumber, "'", functionName,
+      semanticError(functionNameIDNode, "'", functionName,
                     "' redeclared as different kind of symbol");
       return;
     }
     FunctionSignature &origSignature = std::get<FunctionSignature>(origEntry->attribute);
     if (!(origSignature.returnType == returnTypeDesc.type &&
           origSignature.parameters == parameters)) {
-      semanticError(functionNameIDNode->linenumber, "conflicting types for '", functionName, "'");
+      semanticError(functionNameIDNode, "conflicting types for '", functionName, "'");
       return;
     }
     // Nothing to do, leave it as it is
@@ -362,7 +363,7 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   const TypeDescriptor &returnTypeDesc = typeSpecifierNode->dataType;
   if (returnTypeDesc.type == ERROR_TYPE) return;
   if (returnTypeDesc.type == ARR_TYPE) {
-    semanticError(functionNameIDNode->linenumber, "'", functionName,
+    semanticError(functionNameIDNode, "'", functionName,
                   "' declared as function returning an array");
     return;
   }
@@ -378,7 +379,7 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   if (symbolTable.declaredLocally(functionName)) {
     SymbolTableEntry *origEntry = symbolTable.getSymbol(functionName);
     if (origEntry->symbolKind != FUNCTION_SYMBOL) {
-      semanticError(functionNameIDNode->linenumber, "'", functionName,
+      semanticError(functionNameIDNode, "'", functionName,
                     "' redeclared as different kind of symbol");
       symbolTable.dropStash();
       return;
@@ -386,12 +387,12 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
     FunctionSignature &origSignature = std::get<FunctionSignature>(origEntry->attribute);
     if (!(origSignature.returnType == returnTypeDesc.type &&
           origSignature.parameters == parameters)) {
-      semanticError(functionNameIDNode->linenumber, "conflicting types for '", functionName, "'");
+      semanticError(functionNameIDNode, "conflicting types for '", functionName, "'");
       symbolTable.dropStash();
       return;
     }
     if (origSignature.hasDefinition) {
-      semanticError(functionNameIDNode->linenumber, "redefinition of '", functionName, "'");
+      semanticError(functionNameIDNode, "redefinition of '", functionName, "'");
       symbolTable.dropStash();
       return;
     }
@@ -446,33 +447,35 @@ std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *para
 
     if (parameterName == "") {
       if (isDefinition)
-        semanticError(child->linenumber, "parameter name omitted");
+        semanticError(child, "parameter name omitted");
       else if (parameterTypeDesc.type == VOID_TYPE)
-        semanticError(child->linenumber, "parameter ", idx + 1, " has void type");
+        semanticError(child, "parameter ", idx + 1, " has void type");
+      else if (parameterTypeDesc.type == ARR_TYPE && parameterTypeDesc.arrayProperties.elementType == VOID_TYPE)
+        semanticError(child, "parameter ", idx + 1, " declared as array of void");
       continue;
     }
 
     if (parameterTypeDesc.type == VOID_TYPE) {
-      semanticError(child->linenumber, "parameter ", idx + 1, " ('", parameterName,
-                    "') has void type");
+      semanticError(child, "parameter ", idx + 1, " ('", parameterName, "') has void type");
+      continue;
+    } else if (parameterTypeDesc.type == ARR_TYPE && parameterTypeDesc.arrayProperties.elementType == VOID_TYPE) {
+      semanticError(child, "parameter ", idx + 1, " ('", parameterName, "') declared as array of void");
       continue;
     }
 
     if (symbolTable.declaredLocally(parameterName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(parameterName);
       if (origEntry->symbolKind != VARIABLE_SYMBOL) {
-        semanticError(parameterNameIDNode->linenumber, "'", parameterName,
+        semanticError(parameterNameIDNode, "'", parameterName,
                       "' redeclared as different kind of symbol");
         continue;
       }
       const TypeDescriptor &origTypeDesc = std::get<TypeDescriptor>(origEntry->attribute);
       if (!(origTypeDesc == parameterTypeDesc)) {
-        semanticError(parameterNameIDNode->linenumber, "conflicting types for '", parameterName,
-                      "'");
+        semanticError(parameterNameIDNode, "conflicting types for '", parameterName, "'");
         continue;
       }
-      semanticError(parameterNameIDNode->linenumber, "redefinition of parameter '", parameterName,
-                    "'");
+      semanticError(parameterNameIDNode, "redefinition of parameter '", parameterName, "'");
       continue;
     }
     symbolTable.addVariableSymbol(parameterName, parameterTypeDesc);
@@ -544,14 +547,12 @@ void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
       std::get<IdentifierSemanticValue>(functionNameIDNode->semanticValue).identifierName;
   SymbolTableEntry *funcEntry = symbolTable.getSymbol(functionName);
   if (funcEntry == nullptr) {
-    semanticError(functionNameIDNode->linenumber, "'", functionName,
-                  "' was not declared in this scope");
+    semanticError(functionNameIDNode, "'", functionName, "' was not declared in this scope");
     statementNode->dataType = ERROR_TYPE;
     return;
   }
   if (funcEntry->symbolKind != FUNCTION_SYMBOL) {
-    semanticError(functionNameIDNode->linenumber, "called object '", functionName,
-                  "' is not a function (but ",
+    semanticError(functionNameIDNode, "called object '", functionName, "' is not a function (but ",
                   (funcEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ",
                   funcEntry->symbolKind, ")");
     statementNode->dataType = ERROR_TYPE;
@@ -563,11 +564,9 @@ void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
   statementNode->dataType = funcSignature.returnType;
   if (parameterListNode->children.size() != funcSignature.parameters.size()) {
     if (parameterListNode->children.size() < funcSignature.parameters.size())
-      semanticError(functionNameIDNode->linenumber, "too few arguments to function '", functionName,
-                    "'");
+      semanticError(functionNameIDNode, "too few arguments to function '", functionName, "'");
     else
-      semanticError(functionNameIDNode->linenumber, "too many arguments to function '",
-                    functionName, "'");
+      semanticError(functionNameIDNode, "too many arguments to function '", functionName, "'");
     return;
   }
   for (size_t idx = 0; idx < parameterListNode->children.size(); ++idx) {
@@ -577,11 +576,11 @@ void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
     const TypeDescriptor &callTypeDesc = parameterNode->dataType;
     const TypeDescriptor &funcTypeDesc = funcSignature.parameters[idx];
     if (callTypeDesc.type == VOID_TYPE) {
-      semanticError(parameterNode->linenumber, "invalid use of void expression");
+      semanticError(parameterNode, "invalid use of void expression");
       continue;
     }
     if (!isTypeCompatible(funcTypeDesc, callTypeDesc)) {
-      semanticError(parameterNode->linenumber, "incompatible type for argument ", idx + 1, " of '",
+      semanticError(parameterNode, "incompatible type for argument ", idx + 1, " of '",
                     functionName, "'");
       continue;
     }
@@ -601,10 +600,9 @@ void SemanticAnalysis::processIfStatement(AST *statementNode) {
   if (testNode->dataType.type != ERROR_TYPE && testNode->dataType.type != INT_TYPE &&
       testNode->dataType.type != FLOAT_TYPE) {
     if (testNode->dataType.type == VOID_TYPE) {
-      semanticError(testNode->linenumber, "void value not ignored as it ought to be");
+      semanticError(testNode, "void value not ignored as it ought to be");
     } else {
-      semanticError(testNode->linenumber, "expect scalar type but found type '", testNode->dataType,
-                    "'");
+      semanticError(testNode, "expect scalar type but found type '", testNode->dataType, "'");
     }
   }
   processStatement(trueStatement);
@@ -631,10 +629,9 @@ void SemanticAnalysis::processForStatement(AST *statementNode) {
         if (child->dataType.type != ERROR_TYPE && child->dataType.type != INT_TYPE &&
             child->dataType.type != FLOAT_TYPE) {
           if (child->dataType.type == VOID_TYPE) {
-            semanticError(child->linenumber, "void value not ignored as it ought to be");
+            semanticError(child, "void value not ignored as it ought to be");
           } else {
-            semanticError(child->linenumber, "expect scalar type but found type '", child->dataType,
-                          "'");
+            semanticError(child, "expect scalar type but found type '", child->dataType, "'");
           }
         }
       }
@@ -657,10 +654,9 @@ void SemanticAnalysis::processWhileStatement(AST *statementNode) {
   if (testNode->dataType.type != ERROR_TYPE && testNode->dataType.type != INT_TYPE &&
       testNode->dataType.type != FLOAT_TYPE) {
     if (testNode->dataType.type == VOID_TYPE) {
-      semanticError(testNode->linenumber, "void value not ignored as it ought to be");
+      semanticError(testNode, "void value not ignored as it ought to be");
     } else {
-      semanticError(testNode->linenumber, "expect scalar type but found type '", testNode->dataType,
-                    "'");
+      semanticError(testNode, "expect scalar type but found type '", testNode->dataType, "'");
     }
   }
   processStatement(bodyStatement);
@@ -681,13 +677,13 @@ void SemanticAnalysis::processAssignmentStatement(AST *statementNode) {
     return;
   }
   if (rhsExprNode->dataType.type == VOID_TYPE) {
-    semanticError(rhsExprNode->linenumber, "void value not ignored as it ought to be");
+    semanticError(rhsExprNode, "void value not ignored as it ought to be");
     statementNode->dataType = ERROR_TYPE;
     return;
   }
   if (!isTypeCompatible(lhsIDNode->dataType, rhsExprNode->dataType)) {
-    semanticError(statementNode->linenumber, "incompatible types when assigning to type '",
-                  lhsIDNode->dataType, "' from type '", rhsExprNode->dataType, "'");
+    semanticError(statementNode, "incompatible types when assigning to type '", lhsIDNode->dataType,
+                  "' from type '", rhsExprNode->dataType, "'");
     statementNode->dataType = ERROR_TYPE;
     return;
   }
@@ -705,8 +701,7 @@ void SemanticAnalysis::processReturnStatement(AST *statementNode) {
       std::get<FunctionSignature>(funcEntry->attribute).returnType;
   if (exprNode->nodeType == NUL_NODE) {
     if (funcReturnTypeDesc.type != VOID_TYPE) {
-      semanticError(statementNode->linenumber,
-                    "'return' with no value, in function returning non-void");
+      semanticError(statementNode, "'return' with no value, in function returning non-void");
       return;
     }
     // no error
@@ -717,19 +712,19 @@ void SemanticAnalysis::processReturnStatement(AST *statementNode) {
   if (exprTypeDesc.type == ERROR_TYPE) return;
   if (exprTypeDesc.type == VOID_TYPE) {
     if (funcReturnTypeDesc.type != VOID_TYPE) {
-      semanticError(exprNode->linenumber, "void value not ignored as it ought to be");
+      semanticError(exprNode, "void value not ignored as it ought to be");
       return;
     }
     // no error
     return;
   }
   if (funcReturnTypeDesc.type == VOID_TYPE) {
-    semanticError(exprNode->linenumber, "'return' with a value, in function returning void");
+    semanticError(exprNode, "'return' with a value, in function returning void");
     return;
   }
   if (!isTypeCompatible(funcReturnTypeDesc, exprTypeDesc)) {
-    semanticError(exprNode->linenumber, "incompatible types when returning type '", exprTypeDesc,
-                  "' but '", funcReturnTypeDesc, "' was expected");
+    semanticError(exprNode, "incompatible types when returning type '", exprTypeDesc, "' but '",
+                  funcReturnTypeDesc, "' was expected");
     return;
   }
 }
@@ -741,10 +736,10 @@ void SemanticAnalysis::processTypeSpecifier(AST *typeSpecifier) {
         std::get<IdentifierSemanticValue>(typeSpecifier->semanticValue).identifierName;
     SymbolTableEntry *typeEntry = symbolTable.getSymbol(typeName);
     if (typeEntry == nullptr) {
-      semanticError(typeSpecifier->linenumber, "unknown type name '", typeName, "'");
+      semanticError(typeSpecifier, "unknown type name '", typeName, "'");
       typeSpecifier->dataType = ERROR_TYPE;
     } else if (typeEntry->symbolKind != TYPE_SYMBOL) {
-      semanticError(typeSpecifier->linenumber, "'", typeName, "' is not a type (but ",
+      semanticError(typeSpecifier, "'", typeName, "' is not a type (but ",
                     (typeEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ",
                     typeEntry->symbolKind, ")");
       typeSpecifier->dataType = ERROR_TYPE;
@@ -785,28 +780,25 @@ TypeDescriptor SemanticAnalysis::getDeclaratorType(const TypeDescriptor &typeSpe
       continue;
     } else if (dimComponent->dataType.type != INT_TYPE) {
       if (declaratorName == "")
-        semanticError(declarator->linenumber, "size of unnamed array has non-integer type");
+        semanticError(declarator, "size of unnamed array has non-integer type");
       else
-        semanticError(declarator->linenumber, "size of array '", declaratorName,
-                      "' has non-integer type");
+        semanticError(declarator, "size of array '", declaratorName, "' has non-integer type");
       anyError = true;
       break;
     } else if (!isConst(dimComponent)) {
       if (declaratorName == "")
-        semanticError(declarator->linenumber, "size of unnamed array is not a constant");
+        semanticError(declarator, "size of unnamed array is not a constant");
       else
-        semanticError(declarator->linenumber, "size of array '", declaratorName,
-                      "' is not a constant");
+        semanticError(declarator, "size of array '", declaratorName, "' is not a constant");
       anyError = true;
       break;
     }
     int dimVal = getConstValue<int>(dimComponent);
     if (dimVal <= 0) {
       if (declaratorName == "")
-        semanticError(declarator->linenumber, "size of unnamed array is not positive");
+        semanticError(declarator, "size of unnamed array is not positive");
       else
-        semanticError(declarator->linenumber, "size of array '", declaratorName,
-                      "' is not positive");
+        semanticError(declarator, "size of array '", declaratorName, "' is not positive");
       anyError = true;
       break;
     }
@@ -832,7 +824,7 @@ void SemanticAnalysis::processEnumNode(AST *enumNode) {
     const std::string entryName = "enum " + enumNameSemanticValue.identifierName;
     SymbolTableEntry *enumTypeEntry = symbolTable.getSymbol(entryName);
     if (enumTypeEntry == nullptr) {
-      semanticError(enumNameIDNode->linenumber, "unknown type name '", entryName, "'");
+      semanticError(enumNameIDNode, "unknown type name '", entryName, "'");
       enumNode->dataType = ERROR_TYPE;
       return;
     }
@@ -848,7 +840,7 @@ void SemanticAnalysis::processEnumNode(AST *enumNode) {
     assert(enumNameSemanticValue.kind == NORMAL_ID);
     const std::string entryName = "enum " + enumNameSemanticValue.identifierName;
     if (symbolTable.declaredLocally(entryName)) {
-      semanticError(enumNameIDNode->linenumber, "redefinition of '", entryName, "'");
+      semanticError(enumNameIDNode, "redefinition of '", entryName, "'");
       enumNode->dataType = ERROR_TYPE;
       return;
     }
@@ -871,8 +863,8 @@ void SemanticAnalysis::processEnumNode(AST *enumNode) {
       if (valueNode->dataType.type == ERROR_TYPE)  // do nothing
         ;
       else if (valueNode->dataType.type != INT_TYPE || !isConst(valueNode)) {
-        semanticError(valueNode->linenumber, "enumerator value for '",
-                      enumeratorSemanticValue.identifierName, "' is not an integer constant");
+        semanticError(valueNode, "enumerator value for '", enumeratorSemanticValue.identifierName,
+                      "' is not an integer constant");
       } else {
         enumeratorValue = getConstValue<int>(valueNode);
         haveExplicitValue = true;
@@ -880,7 +872,7 @@ void SemanticAnalysis::processEnumNode(AST *enumNode) {
     }
     if (!haveExplicitValue) {
       if (lastEnumeratorValue == std::numeric_limits<int>::max()) {
-        semanticError(enumeratorIDNode->linenumber, "overflow in enumeration values");
+        semanticError(enumeratorIDNode, "overflow in enumeration values");
       }
       enumeratorValue = lastEnumeratorValue + 1;
     }
@@ -888,10 +880,10 @@ void SemanticAnalysis::processEnumNode(AST *enumNode) {
     if (symbolTable.declaredLocally(enumeratorSemanticValue.identifierName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(enumeratorSemanticValue.identifierName);
       if (origEntry->symbolKind != ENUMERATOR_SYMBOL)
-        semanticError(enumeratorIDNode->linenumber, "'", enumeratorSemanticValue.identifierName,
+        semanticError(enumeratorIDNode, "'", enumeratorSemanticValue.identifierName,
                       "' redeclared as different kind of symbol");
       else
-        semanticError(enumeratorIDNode->linenumber, "redeclaration of enumerator '",
+        semanticError(enumeratorIDNode, "redeclaration of enumerator '",
                       enumeratorSemanticValue.identifierName, "'");
       continue;
     }
@@ -938,7 +930,7 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
     if (operandNode->dataType.type == ERROR_TYPE)
       anyError = true;
     else if (operandNode->dataType.type == VOID_TYPE) {
-      semanticError(operandNode->linenumber, "void value not ignored as it ought to be");
+      semanticError(operandNode, "void value not ignored as it ought to be");
       anyError = true;
     }
   }
@@ -952,8 +944,7 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
     AST *operand = expressionNode->children[0];
     const TypeDescriptor &opTypeDesc = operand->dataType;
     if (!(opTypeDesc.type == INT_TYPE || opTypeDesc.type == FLOAT_TYPE)) {
-      semanticError(expressionNode->linenumber, "invalid operand to unary ", op, " (have '",
-                    opTypeDesc, "')");
+      semanticError(expressionNode, "invalid operand to unary ", op, " (have '", opTypeDesc, "')");
       expressionNode->dataType = ERROR_TYPE;
       return;
     }
@@ -984,8 +975,8 @@ void SemanticAnalysis::processExpressionNode(AST *expressionNode) {
     const TypeDescriptor &rOpTypeDesc = rOperand->dataType;
     if (!(lOpTypeDesc.type == INT_TYPE || lOpTypeDesc.type == FLOAT_TYPE) ||
         !(rOpTypeDesc.type == INT_TYPE || rOpTypeDesc.type == FLOAT_TYPE)) {
-      semanticError(expressionNode->linenumber, "invalid operand to binary ", op, " (have '",
-                    lOpTypeDesc, "' and '", rOpTypeDesc, "')");
+      semanticError(expressionNode, "invalid operand to binary ", op, " (have '", lOpTypeDesc,
+                    "' and '", rOpTypeDesc, "')");
       expressionNode->dataType = ERROR_TYPE;
       return;
     }
@@ -1043,21 +1034,20 @@ void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
 
   SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemanticValue.identifierName);
   if (idEntry == nullptr) {
-    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
+    semanticError(identifierNode, "'", idSemanticValue.identifierName,
                   "' was not declared in this scope");
     identifierNode->dataType = ERROR_TYPE;
     return;
   } else if (!(idEntry->symbolKind == VARIABLE_SYMBOL ||
                idEntry->symbolKind == ENUMERATOR_SYMBOL)) {
-    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
+    semanticError(identifierNode, "'", idSemanticValue.identifierName,
                   "' is not a variable nor an enumerator (but a ", idEntry->symbolKind, ")");
     identifierNode->dataType = ERROR_TYPE;
     return;
   }
   if (idEntry->symbolKind == ENUMERATOR_SYMBOL) {
     if (idSemanticValue.kind == ARRAY_ID) {
-      semanticError(identifierNode->linenumber,
-                    "subscripted value is neither array nor pointer nor vector");
+      semanticError(identifierNode, "subscripted value is neither array nor pointer nor vector");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }
@@ -1079,7 +1069,7 @@ void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
         anyError = true;
         break;
       } else if (dimComponent->dataType.type != INT_TYPE) {
-        semanticError(identifierNode->linenumber, "array subscript is not an integer");
+        semanticError(identifierNode, "array subscript is not an integer");
         anyError = true;
         break;
       }
@@ -1092,8 +1082,7 @@ void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
     assert(index_dim > 0);
     if (variableTypeDesc.type != ARR_TYPE ||
         index_dim > variableTypeDesc.arrayProperties.dimensions.size()) {
-      semanticError(identifierNode->linenumber,
-                    "subscripted value is neither array nor pointer nor vector");
+      semanticError(identifierNode, "subscripted value is neither array nor pointer nor vector");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }
@@ -1116,14 +1105,13 @@ void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
   assert(idSemanticValue.kind == NORMAL_ID || idSemanticValue.kind == ARRAY_ID);
   SymbolTableEntry *idEntry = symbolTable.getSymbol(idSemanticValue.identifierName);
   if (idEntry == nullptr) {
-    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
+    semanticError(identifierNode, "'", idSemanticValue.identifierName,
                   "' was not declared in this scope");
     identifierNode->dataType = ERROR_TYPE;
     return;
   }
   if (idEntry->symbolKind != VARIABLE_SYMBOL) {
-    semanticError(identifierNode->linenumber, "'", idSemanticValue.identifierName,
-                  "' is not a variable (but ",
+    semanticError(identifierNode, "'", idSemanticValue.identifierName, "' is not a variable (but ",
                   (idEntry->symbolKind == ENUMERATOR_SYMBOL ? "an" : "a"), " ", idEntry->symbolKind,
                   ")");
     identifierNode->dataType = ERROR_TYPE;
@@ -1139,7 +1127,7 @@ void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
         anyError = true;
         break;
       } else if (dimComponent->dataType.type != INT_TYPE) {
-        semanticError(identifierNode->linenumber, "array subscript is not an integer");
+        semanticError(identifierNode, "array subscript is not an integer");
         anyError = true;
         break;
       }
@@ -1152,20 +1140,19 @@ void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
     assert(index_dim > 0);
     if (variableTypeDesc.type != ARR_TYPE ||
         index_dim > variableTypeDesc.arrayProperties.dimensions.size()) {
-      semanticError(identifierNode->linenumber,
-                    "subscripted value is neither array nor pointer nor vector");
+      semanticError(identifierNode, "subscripted value is neither array nor pointer nor vector");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }
     if (index_dim < variableTypeDesc.arrayProperties.dimensions.size()) {
-      semanticError(identifierNode->linenumber, "assignment to expression with array type");
+      semanticError(identifierNode, "assignment to expression with array type");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }
     identifierNode->dataType = variableTypeDesc.arrayProperties.elementType;
   } else {  // NORMAL ID
     if (variableTypeDesc.type == ARR_TYPE) {
-      semanticError(identifierNode->linenumber, "assignment to expression with array type");
+      semanticError(identifierNode, "assignment to expression with array type");
       identifierNode->dataType = ERROR_TYPE;
       return;
     }

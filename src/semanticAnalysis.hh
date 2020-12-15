@@ -2,17 +2,21 @@
 #define __SEMANTIC_ANALYSIS_HH__
 
 #include <iostream>
+#include <string>
 
 #include "header.hh"
+#include "print.hh"
 #include "symbolTable.hh"
 
 class SemanticAnalysis {
   AST *prog;
+  std::string inputFilename;
   SymbolTable symbolTable;
 
   template <typename... Args>
-  void semanticError(int lineno, const Args &... args) {
-    printHelper(std::cerr, "Error found in line ", lineno, "\n", args...);
+  void semanticError(AST *errorNode, const Args &... args) {
+    printHelper(std::cerr, "Error found in line ",
+                errorNode->linenumber, ": ", args...);
     anySemanticError = true;
   }
 
@@ -55,7 +59,7 @@ class SemanticAnalysis {
   void processIdentifierLValue(AST *identifierNode);
 
  public:
-  SemanticAnalysis(AST *_prog);
+  SemanticAnalysis(AST *_prog, const std::string &inputFilename);
   void runAnalysis();
   bool anySemanticError;
 };
