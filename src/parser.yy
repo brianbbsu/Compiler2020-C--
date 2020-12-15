@@ -583,34 +583,18 @@ mul_op  : OP_TIMES { $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_MUL); }
         ;
 
 factor  : MK_LPAREN relop_expr MK_RPAREN { $$ = $2; }
-        | unary_op MK_LPAREN relop_expr MK_RPAREN
-            {
-              $$ = makeChild($1, $3);
-            }
         | CONST
             {
               $$ = new AST(CONST_VALUE_NODE);
               $$->semanticValue = $1;
-            }
-        | unary_op CONST
-            {
-              AST *val = new AST(CONST_VALUE_NODE);
-              val->semanticValue = $2;
-              $$ = makeChild($1, val);
             }
         | ID MK_LPAREN relop_expr_list MK_RPAREN
             {
               $$ = makeStmtNode(FUNCTION_CALL_STMT);
               makeFamily($$, 2, makeIDNode($1, NORMAL_ID), $3);
             }
-        | unary_op ID MK_LPAREN relop_expr_list MK_RPAREN
-            {
-              AST *func_call = makeStmtNode(FUNCTION_CALL_STMT);
-              makeFamily(func_call, 2, makeIDNode($2, NORMAL_ID), $4);
-              $$ = makeChild($1, func_call);
-            }
         | var_ref
-        | unary_op var_ref
+        | unary_op factor
             {
               $$ = makeChild($1, $2);
             }

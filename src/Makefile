@@ -6,7 +6,7 @@ CC = g++ -g -std=c++17 -O2 -Wall -Wextra -Wno-unused-result
 LEX = flex
 YACC = bison -v
 YACCFLAG = -d
-LIBS = -lfl
+LIBS =
 
 parser: parser.o lexer.o print.o symbolTable.o semanticAnalysis.o
 	$(CC) -o $@ $^ $(LIBS)
