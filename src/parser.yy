@@ -5,6 +5,7 @@
 
 %code requires {
   #include <cstdarg>
+  #include <string>
   #include <utility>
   #include <vector>
 
@@ -250,14 +251,14 @@ param : type ID
       ;
 
 dim_fn  : MK_LB expr_null MK_RB { $$.push_back($2); }
-        | dim_fn MK_LB expr MK_RB
+        | dim_fn MK_LB relop_expr MK_RB
             {
               $$ = std::move($1);
               $$.push_back($3);
             }
 		    ;
 
-expr_null : expr
+expr_null : relop_expr
           | %empty { $$ = new AST(NUL_NODE); }
           ;
 
@@ -605,12 +606,12 @@ var_ref : ID { $$ = makeIDNode($1, NORMAL_ID); }
         ;
 
 
-dim_list  : dim_list MK_LB expr MK_RB
+dim_list  : dim_list MK_LB relop_expr MK_RB
               {
                 $$ = std::move($1);
                 $$.push_back($3);
               }
-          | MK_LB expr MK_RB { $$.push_back($2); }
+          | MK_LB relop_expr MK_RB { $$.push_back($2); }
 		      ;
 
 unary_op  : OP_PLUS { $$ = makeExprNode(UNARY_OPERATION, UNARY_OP_POSITIVE); }
@@ -630,14 +631,16 @@ namespace yy {
 } // namespace yy
 
 int main(int argc, char *argv[]) {
-  if (argc > 1) freopen(argv[1], "r", stdin);
+  assert(argc == 2);
+  freopen(argv[1], "r", stdin);
+  std::string inputFilename(argv[1]);
   yy::parser parse;
   // parse.set_debug_level(1);
   parse();
   assert(prog != nullptr);
   ASTPrinter printer(prog);
   printer.print();
-  SemanticAnalysis semanticAnalysis(prog);
+  SemanticAnalysis semanticAnalysis(prog, inputFilename);
   semanticAnalysis.runAnalysis();
   if (!semanticAnalysis.anySemanticError)
     std::cout << "Parsing completed. No errors found.\n";
