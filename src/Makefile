@@ -1,5 +1,5 @@
 TARGET = parser
-OBJECT = parser.cc parser.o lexer.cc lexer.o print.o symbolTable.o semanticAnalysis.o
+OBJECT = parser.cc parser.o lexer.cc lexer.o print.o symbolTable.o semanticAnalysis.o codeGen.o resourceAllocation.o
 OUTPUT = parser.output parser.hh AST_Graph.gv
 
 CC = g++ -g -std=c++17 -O2 -Wall -Wextra -Wno-unused-result
@@ -8,7 +8,7 @@ YACC = bison -v
 YACCFLAG = -d
 LIBS =
 
-parser: parser.o lexer.o print.o symbolTable.o semanticAnalysis.o
+parser: parser.o lexer.o print.o symbolTable.o semanticAnalysis.o codeGen.o resourceAllocation.o
 	$(CC) -o $@ $^ $(LIBS)
 
 %.o: %.cc

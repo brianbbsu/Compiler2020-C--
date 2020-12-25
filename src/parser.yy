@@ -12,6 +12,7 @@
   #include "header.hh"
   #include "print.hh"
   #include "semanticAnalysis.hh"
+  #include "codeGen.hh"
 }
 
 %code {
@@ -646,5 +647,7 @@ int main(int argc, char *argv[]) {
     std::cout << "Parsing completed. No errors found.\n";
   else
     return 1;
+  CodeGeneration codeGen {prog, "output.s"};
+  codeGen.run();
   return 0;
 }

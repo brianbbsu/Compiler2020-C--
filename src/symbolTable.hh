@@ -22,6 +22,10 @@ struct SymbolTableEntry {
   SymbolKind symbolKind;
   // TypeDescriptor for variable and type, FunctionSignature for function, int for enum const
   std::variant<TypeDescriptor, FunctionSignature, int> attribute;
+  // MemoryLocation only used in code generation phase
+  MemoryLocation place;
+  SymbolTableEntry (int level_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_) : level(level_), symbolKind(symbolKind_), attribute(attribute_) {}
+  SymbolTableEntry (int level_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_, MemoryLocation place_) : level(level_), symbolKind(symbolKind_), attribute(attribute_), place(place_) {}
 };
 
 class SymbolTable {
@@ -58,8 +62,10 @@ class SymbolTable {
   bool declaredLocally(const std::string &name);
   SymbolTableEntry *getSymbol(const std::string &name);
   SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type);
+  SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type, const MemoryLocation &place);
   SymbolTableEntry *addTypeSymbol(const std::string &name, TypeDescriptor type);
   SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature);
+  SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature, const MemoryLocation &place);
   SymbolTableEntry *addEnumeratorSymbol(const std::string &name, int value);
 };
 

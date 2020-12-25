@@ -4,7 +4,9 @@
 
 #include "print.hh"
 
-SymbolTable::SymbolTable() : currentLevel(-1), hasStash(false) {}
+SymbolTable::SymbolTable() : currentLevel(-1), hasStash(false) {
+  resetSymbolTable();
+}
 
 void SymbolTable::resetSymbolTable() {
   while (currentLevel >= 0) closeScope();
@@ -112,6 +114,11 @@ SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name, TypeDe
   return _addSymbol(name, entry);
 }
 
+SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name, TypeDescriptor type, const MemoryLocation &place) {
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, VARIABLE_SYMBOL, std::move(type), place};
+  return _addSymbol(name, entry);
+}
+
 SymbolTableEntry *SymbolTable::addTypeSymbol(const std::string &name, TypeDescriptor type) {
   SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(type)};
   return _addSymbol(name, entry);
@@ -121,6 +128,14 @@ SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature) {
   SymbolTableEntry *entry =
       new SymbolTableEntry{currentLevel, FUNCTION_SYMBOL, std::move(signature)};
+  return _addSymbol(name, entry);
+}
+
+SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
+                                                 FunctionSignature signature,
+                                                 const MemoryLocation &place) {
+  SymbolTableEntry *entry =
+      new SymbolTableEntry{currentLevel, FUNCTION_SYMBOL, std::move(signature), place};
   return _addSymbol(name, entry);
 }
 

@@ -40,7 +40,7 @@ T SemanticAnalysis::getConstValue(AST *node) {
   if (node->nodeType == CONST_VALUE_NODE)
     return std::visit(visitor, std::get<Const>(node->semanticValue).value);
   else if (node->nodeType == EXPR_NODE)
-    return std::visit(visitor, std::get<EXPRSemanticValue>(node->semanticValue).constEvalValue);
+    return std::visit(visitor, std::get<EXPRSemanticValue>(node->semanticValue).constEvalValue.value);
   else if (node->nodeType == IDENTIFIER_NODE)
     return static_cast<T>(std::get<IdentifierSemanticValue>(node->semanticValue).enumeratorValue);
   raiseError("Unknown node type in getConstValue");
@@ -84,7 +84,7 @@ void SemanticAnalysis::tryBinaryConstEval(AST *exprNode, AST *lOperand, AST *rOp
   }
   EXPRSemanticValue &exprSemanticValue = std::get<EXPRSemanticValue>(exprNode->semanticValue);
   exprSemanticValue.isConstEval = true;
-  exprSemanticValue.constEvalValue.emplace<R>(nVal);
+  exprSemanticValue.constEvalValue = Const{nVal};
 }
 
 template <typename T, typename R>
@@ -104,7 +104,7 @@ void SemanticAnalysis::tryUnaryConstEval(AST *exprNode, AST *operand, UNARY_OPER
   }
   EXPRSemanticValue &exprSemanticValue = std::get<EXPRSemanticValue>(exprNode->semanticValue);
   exprSemanticValue.isConstEval = true;
-  exprSemanticValue.constEvalValue.emplace<R>(nVal);
+  exprSemanticValue.constEvalValue = Const{nVal};
 }
 
 DATA_TYPE SemanticAnalysis::getLargerType(DATA_TYPE type1, DATA_TYPE type2) {
