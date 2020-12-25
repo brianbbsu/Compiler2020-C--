@@ -18,7 +18,7 @@ StackMemoryOffset StackMemoryManager::getMemory (size_t size) {
 
 
 size_t StackMemoryManager::getProcedureMemoryConsumption () {
-  return static_cast<size_t>(-insertOffset) + 8 * REGISTER_TO_BE_STORED.size();
+  return static_cast<size_t>(-insertOffset) + 8 * CALLEE_SAVE_REGISTERS.size();
 }
 
 
