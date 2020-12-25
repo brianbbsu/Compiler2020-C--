@@ -26,14 +26,10 @@ tags
 [._]*.un~
 
 # ------------- compiler project
+src/*.o
 parser
 parser.cc
-parser.o
 lexer.cc
-lexer.o
-print.o
-symbolTable.o
-semanticAnalysis.o
 parser.output
 parser.hh
 AST_Graph.gv
