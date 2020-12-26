@@ -198,15 +198,32 @@ const Register
 typedef int StackMemoryOffset;
 typedef std::string LabelInAssembly;
 /**
- * AST node and SymbolTableEntry which represent a value should contain a MemoryLocation
+ * AST node and SymbolTableEntry which represent a value or var_ref should contain a MemoryLocation
  * For AST node
- *  - LabelInAssembly: the AST node is a ID of global variable
- *  - StackMemoryOffset: the AST node is a local variable or temporary value
+ *  - LabelInAssembly
+ *      : the AST node is a ID of global variable
+ *  - StackMemoryOffset && !(isAbsoluteMemoryAddress)
+ *      : the AST node is a local variable or temporary value
+ *  - StackMemoryOffset && isAbsoluteMemoryAddress
+ *      : the AST node is an array dereference, $(fp+offset) stores the address to the array element
  * For SymbolTabelEntry
- *  - LabelInAssembly: the symbol is a global variable
- *  - StackMemoryOffset: the symbol is a local variable
+ *  - LabelInAssembly
+ *      : the symbol is a global variable
+ *  - StackMemoryOffset && !(isAbsoluteMemoryAddress)
+ *      : the symbol is a local variable
+ *  - StackMemoryOffset && isAbsoluteMemoryAddress
+ *      : impossible
  */
-typedef std::variant<StackMemoryOffset, LabelInAssembly> MemoryLocation;
+struct MemoryLocation {
+  bool isAbsoluteMemoryAddress;
+  std::variant<StackMemoryOffset, LabelInAssembly> value;
+  MemoryLocation () : isAbsoluteMemoryAddress{false}, value{0} {}
+  MemoryLocation (bool absolute, const StackMemoryOffset &offset) : isAbsoluteMemoryAddress{absolute}, value{offset} {}
+  MemoryLocation (bool absolute, const LabelInAssembly &label) : isAbsoluteMemoryAddress{absolute}, value{label} {}
+  MemoryLocation (const StackMemoryOffset &offset) : isAbsoluteMemoryAddress{false}, value{offset} {}
+  MemoryLocation (const LabelInAssembly &label) : isAbsoluteMemoryAddress{false}, value{label} {}
+};
+
 
 
 typedef std::string AssemblySection;
