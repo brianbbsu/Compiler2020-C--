@@ -632,7 +632,13 @@ namespace yy {
 } // namespace yy
 
 int main(int argc, char *argv[]) {
-  assert(argc == 2);
+  if (argc != 2) {
+    std::cerr << "usage:" << std::endl
+              << "    parser FILE_NAME" << std::endl
+              << std::endl
+              << "    output file is output.s" << std::endl;
+    return EXIT_FAILURE;
+  }
   freopen(argv[1], "r", stdin);
   std::string inputFilename(argv[1]);
   yy::parser parse;
