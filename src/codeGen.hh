@@ -23,6 +23,7 @@ private:
   static LabelInAssembly makeFuncLabel (const std::string &);
   static LabelInAssembly makeFrameSizeLabel (const LabelInAssembly &);
   static LabelInAssembly makeConstStringLabel ();
+  static LabelInAssembly makeBranchLabel ();
   static Const getConstValue (AST *);
   static std::vector<TypeDescriptor> getParameterDeclarationList (AST *);
   static int32_t float2intMemoryRepresent (float);
@@ -69,6 +70,7 @@ private:
   void genArithmeticOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &);
   void genLogicalOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &);
   void genReturn (const MemoryLocation &);
+  void genBranchTest (AST *, const LabelInAssembly &);
 
   void _genADD (const Register &, const Register &, const Register &);
   void _genADDI (const Register &, const Register &, int);
@@ -84,6 +86,8 @@ private:
   void _genFEQ_S (const Register &, const Register &, const Register &);
   void _genFLT_S (const Register &, const Register &, const Register &);
   void _genFLE_S (const Register &, const Register &, const Register &);
+  void _genBEQZ (const Register &, const LabelInAssembly &);
+  void _genJ (const LabelInAssembly &);
   void _genLWorFLW (const Register &, int, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &);
@@ -96,6 +100,8 @@ private:
   void _genFCVT_W_S (const Register &, const Register &); // convert float to int
   void _genFCVT_S_W (const Register &, const Register &); // convert int to float
   void _genFMV_W_X (const Register &, const Register &);
+  void _genConvertToBool (const Register &, const Register &);
+  void _genConvertToBool (const Register &, const Register &, const Register &);
   void _genCALL (const LabelInAssembly &);
   void _genRET ();
 

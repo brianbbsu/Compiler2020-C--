@@ -91,6 +91,12 @@ inline LabelInAssembly CodeGeneration::makeConstStringLabel () {
 }
 
 
+inline LabelInAssembly CodeGeneration::makeBranchLabel () {
+  static int counter {0};
+  return "br_" + std::to_string(counter++);
+}
+
+
 inline Const CodeGeneration::getConstValue (AST *node) {
   switch (node->nodeType) {
     case CONST_VALUE_NODE:
@@ -533,8 +539,20 @@ void CodeGeneration::visitStatement (AST *stmtNode) {
 }
 
 
-void CodeGeneration::visitIfStatement (AST *) {
-  std::cerr << "CodeGeneration::visitIfStatement not yet implemented" << std::endl;
+void CodeGeneration::visitIfStatement (AST *stmtNode) {
+  const auto &testNode {stmtNode->children[0]};
+  const auto &trueStmtNode {stmtNode->children[1]};
+  const auto &falseStmtNode {stmtNode->children[2]};
+
+  visitExpressionComponent(testNode);
+  LabelInAssembly branchElseLabel {makeBranchLabel()};
+  LabelInAssembly branchFinalLabel {makeBranchLabel()};
+  genBranchTest(testNode, branchElseLabel);
+  visitStatement(trueStmtNode);
+  _genJ(branchFinalLabel);
+  ofs << branchElseLabel << ":" << std::endl;
+  visitStatement(falseStmtNode);
+  ofs << branchFinalLabel << ":" << std::endl;
 }
 
 
@@ -954,24 +972,10 @@ void CodeGeneration::genLogicalOperation (const BINARY_OPERATOR &op, const Memor
     }
   }
   if (boolSrc) {
-    if (isFloatRegister(srcReg1)) {
-      _genLoadFloatImm(tmpFloatReg, 0.f);
-      _genFEQ_S(REG_T1, srcReg1, tmpFloatReg);
-      srcReg1 = REG_T1;
-      _genSEQZ(srcReg1, srcReg1);
-    }
-    else {
-      _genSNEZ(srcReg1, srcReg1);
-    }
-    if (isFloatRegister(srcReg2)) {
-      _genLoadFloatImm(tmpFloatReg, 0.f);
-      _genFEQ_S(REG_T2, srcReg2, tmpFloatReg);
-      srcReg2 = REG_T2;
-      _genSEQZ(srcReg2, srcReg2);
-    }
-    else {
-      _genSNEZ(srcReg2, srcReg2);
-    }
+    _genConvertToBool(REG_T1, srcReg1, tmpFloatReg);
+    srcReg1 = REG_T1;
+    _genConvertToBool(REG_T2, srcReg2, tmpFloatReg);
+    srcReg2 = REG_T2;
   }
   // do operation
   switch (op) {
@@ -1063,6 +1067,27 @@ void CodeGeneration::genReturn (const MemoryLocation &value) {
 }
 
 
+void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branchElseLabel) {
+  Register tmpIntReg {REG_T0};
+  Register tmpFloatReg {REG_FT0};
+  Register valueReg;
+  Register middleReg {REG_T2};
+  switch (testNode->dataType.type) {
+    case INT_TYPE:
+      valueReg = REG_T1;
+      break;
+    case FLOAT_TYPE:
+      valueReg = REG_FT1;
+      break;
+    default:
+      assert(false);
+  }
+  genLoadFromMemoryLocation(valueReg, testNode->place, tmpIntReg);
+  _genConvertToBool(middleReg, valueReg, tmpFloatReg);
+  _genBEQZ(middleReg, branchElseLabel);
+}
+
+
 void CodeGeneration::_genADD (const Register &rd, const Register &rs1, const Register &rs2) {
   assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
   if (isFloatRegister(rd))
@@ -1126,7 +1151,7 @@ void CodeGeneration::_genSEQZ (const Register &rd, const Register &rs1) {
 
 
 void CodeGeneration::_genSNEZ (const Register &rd, const Register &rs1) {
-  ofs << "  seqz " << rd << ", " << rs1 << std::endl;
+  ofs << "  snez " << rd << ", " << rs1 << std::endl;
 }
 
 
@@ -1147,6 +1172,16 @@ void CodeGeneration::_genFLT_S (const Register &rd, const Register &rs1, const R
 
 void CodeGeneration::_genFLE_S (const Register &rd, const Register &rs1, const Register &rs2) {
   ofs << "  fle.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genBEQZ (const Register &rs1, const LabelInAssembly &offset) {
+  ofs << "  beqz " << rs1 << ", " << offset << std::endl;
+}
+
+
+void CodeGeneration::_genJ (const LabelInAssembly &offset) {
+  ofs << "  j " << offset << std::endl;
 }
 
 
@@ -1235,6 +1270,25 @@ void CodeGeneration::_genFCVT_S_W (const Register &rd, const Register &rs1) {
 
 void CodeGeneration::_genFMV_W_X (const Register &rd, const Register &rs1) {
   ofs << "  fmv.w.x " << rd << ", " << rs1 << std::endl;
+}
+
+
+void CodeGeneration::_genConvertToBool (const Register &rd, const Register &rs1) {
+  assert(!isFloatRegister(rd) && !isFloatRegister(rs1));
+  _genSNEZ(rd, rs1);
+}
+
+
+void CodeGeneration::_genConvertToBool (const Register &rd, const Register &rs1, const Register &tmpFloatReg) {
+  assert(isFloatRegister(tmpFloatReg) && !isFloatRegister(rd));
+  if (isFloatRegister(rs1)) {
+    _genLoadFloatImm(tmpFloatReg, 0.f);
+    _genFEQ_S(rd, rs1, tmpFloatReg);
+    _genSEQZ(rd, rd);
+  }
+  else {
+    _genSNEZ(rd, rs1);
+  }
 }
 
 
