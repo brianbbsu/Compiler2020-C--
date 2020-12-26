@@ -55,8 +55,8 @@ class SemanticAnalysis {
   void processExpressionComponent(AST *expressionComponent);  // every thing with a data type
   void processExpressionNode(AST *expressionNode);
   void processConstNode(AST *constNode);
-  void processIdentifierRValue(AST *identifierNode);
-  void processIdentifierLValue(AST *identifierNode);
+  void processVarRefRValue(AST *identifierNode);
+  void processVarRefLValue(AST *identifierNode);
 
  public:
   SemanticAnalysis(AST *_prog, const std::string &inputFilename);

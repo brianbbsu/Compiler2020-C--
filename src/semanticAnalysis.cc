@@ -670,7 +670,7 @@ void SemanticAnalysis::processAssignmentStatement(AST *statementNode) {
   AST *lhsIDNode = statementNode->children[0];
   AST *rhsExprNode = statementNode->children[1];
 
-  processIdentifierLValue(lhsIDNode);
+  processVarRefLValue(lhsIDNode);
   processExpressionComponent(rhsExprNode);
   if (lhsIDNode->dataType.type == ERROR_TYPE || rhsExprNode->dataType.type == ERROR_TYPE) {
     statementNode->dataType = ERROR_TYPE;
@@ -912,7 +912,7 @@ void SemanticAnalysis::processExpressionComponent(AST *expressionComponent) {
       processConstNode(expressionComponent);
       break;
     case IDENTIFIER_NODE:
-      processIdentifierRValue(expressionComponent);
+      processVarRefRValue(expressionComponent);
       break;
     default:
       raiseError("Unknown expression component node type");
@@ -1026,7 +1026,7 @@ void SemanticAnalysis::processConstNode(AST *constNode) {
   }
 }
 
-void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
+void SemanticAnalysis::processVarRefRValue(AST *identifierNode) {
   assert(identifierNode->nodeType == IDENTIFIER_NODE);
   IdentifierSemanticValue &idSemanticValue =
       std::get<IdentifierSemanticValue>(identifierNode->semanticValue);
@@ -1098,7 +1098,7 @@ void SemanticAnalysis::processIdentifierRValue(AST *identifierNode) {
   }
 }
 
-void SemanticAnalysis::processIdentifierLValue(AST *identifierNode) {
+void SemanticAnalysis::processVarRefLValue(AST *identifierNode) {
   assert(identifierNode->nodeType == IDENTIFIER_NODE);
   const IdentifierSemanticValue &idSemanticValue =
       std::get<IdentifierSemanticValue>(identifierNode->semanticValue);

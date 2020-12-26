@@ -41,8 +41,8 @@ private:
   void visitFunctionCallStatement (AST *);
   void visitAssignmentStatement (AST *);
   void visitConstNode (AST *);
-  void visitIdentifierRValue (AST *);
-  void visitIdentifierLValue (AST *);
+  void visitVarRefRValue (AST *);
+  void visitVarRefLValue (AST *);
   void visitBlock (AST *);
   void visitStatement (AST *);
   void visitIfStatement (AST *);

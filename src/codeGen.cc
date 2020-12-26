@@ -256,7 +256,7 @@ void CodeGeneration::visitExpressionComponent (AST *expressionComponent) {
       visitConstNode(expressionComponent);
       break;
     case IDENTIFIER_NODE:
-      visitIdentifierRValue(expressionComponent);
+      visitVarRefRValue(expressionComponent);
       break;
     default:
       assert(false);
@@ -375,7 +375,7 @@ void CodeGeneration::visitAssignmentStatement (AST *stmtNode) {
   AST *LHSIDNode {stmtNode->children[0]};
   AST *RHSExprNode {stmtNode->children[1]};
 
-  visitIdentifierLValue(LHSIDNode);
+  visitVarRefLValue(LHSIDNode);
   visitExpressionComponent(RHSExprNode);
 
   size_t dataSize {getTypeSize(stmtNode->dataType)};
@@ -401,7 +401,7 @@ void CodeGeneration::visitConstNode (AST *constNode) {
 }
 
 
-void CodeGeneration::visitIdentifierRValue (AST *idNode) {
+void CodeGeneration::visitVarRefRValue (AST *idNode) {
   const auto &idSemanticValue {std::get<IdentifierSemanticValue>(idNode->semanticValue)};
   SymbolTableEntry *idEntry {symtab.getSymbol(idSemanticValue.identifierName)};
 
@@ -451,8 +451,8 @@ void CodeGeneration::visitIdentifierRValue (AST *idNode) {
 }
 
 
-void CodeGeneration::visitIdentifierLValue (AST *) {
-  std::cerr << "CodeGeneration::visitIdentifierLValue not implemented yet" << std::endl;
+void CodeGeneration::visitVarRefLValue (AST *) {
+  std::cerr << "CodeGeneration::visitVarRefLValue not implemented yet" << std::endl;
 }
 
 
