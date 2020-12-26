@@ -566,8 +566,19 @@ void CodeGeneration::visitForStatement (AST *) {
 }
 
 
-void CodeGeneration::visitWhileStatement (AST *) {
-  std::cerr << "CodeGeneration::visitWhileStatement not yet implemented" << std::endl;
+void CodeGeneration::visitWhileStatement (AST *stmtNode) {
+  const auto &testNode {stmtNode->children[0]};
+  const auto &bodyStmtNode {stmtNode->children[1]};
+
+  LabelInAssembly beforeTestLabel {makeBranchLabel()};
+  LabelInAssembly finalLabel {makeBranchLabel()};
+
+  ofs << beforeTestLabel << ":" << std::endl;
+  visitExpressionComponent(testNode);
+  genBranchTest(testNode, finalLabel);
+  visitStatement(bodyStmtNode);
+  _genJ(beforeTestLabel);
+  ofs << finalLabel << ":" << std::endl;
 }
 
 
@@ -1072,7 +1083,7 @@ void CodeGeneration::genReturn (const MemoryLocation &value) {
 }
 
 
-void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branchElseLabel) {
+void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branchFalseLabel) {
   Register tmpIntReg {REG_T0};
   Register tmpFloatReg {REG_FT0};
   Register valueReg;
@@ -1089,7 +1100,7 @@ void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branch
   }
   genLoadFromMemoryLocation(valueReg, testNode->place, tmpIntReg);
   _genConvertToBool(middleReg, valueReg, tmpFloatReg);
-  _genBEQZ(middleReg, branchElseLabel);
+  _genBEQZ(middleReg, branchFalseLabel);
 }
 
 
