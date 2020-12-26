@@ -43,6 +43,7 @@ private:
   void visitConstNode (AST *);
   void visitVarRefRValue (AST *);
   void visitVarRefLValue (AST *);
+  void visitVarRef (AST *);
   void visitBlock (AST *);
   void visitStatement (AST *);
   void visitIfStatement (AST *);

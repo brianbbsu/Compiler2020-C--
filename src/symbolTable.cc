@@ -17,8 +17,8 @@ void SymbolTable::resetSymbolTable() {
   addTypeSymbol("int", TypeDescriptor(INT_TYPE));
   addTypeSymbol("float", TypeDescriptor(FLOAT_TYPE));
   addTypeSymbol("void", TypeDescriptor(VOID_TYPE));
-  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true});
-  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true});
+  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true}, LabelInAssembly{"_read_int"});
+  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true}, LabelInAssembly{"_read_float"});
   addFunctionSymbol("write", FunctionSignature{VOID_TYPE, {WRITE_PARAMETER_TYPE}, true});
 }
 

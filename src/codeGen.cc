@@ -402,12 +402,22 @@ void CodeGeneration::visitConstNode (AST *constNode) {
 
 
 void CodeGeneration::visitVarRefRValue (AST *idNode) {
+  visitVarRef(idNode);
+}
+
+
+void CodeGeneration::visitVarRefLValue (AST *idNode) {
+  visitVarRef(idNode);
+}
+
+
+void CodeGeneration::visitVarRef (AST *idNode) {
   const auto &idSemanticValue {std::get<IdentifierSemanticValue>(idNode->semanticValue)};
   SymbolTableEntry *idEntry {symtab.getSymbol(idSemanticValue.identifierName)};
 
   if (idEntry->symbolKind == ENUMERATOR_SYMBOL) {
     // whether idEntry has attribute "place" depends on implementation
-    std::cerr << "var_ref of rvalue does not support enumeration currently" << std::endl;
+    std::cerr << "var_ref does not support enumeration currently" << std::endl;
     return;
   }
 
@@ -448,11 +458,6 @@ void CodeGeneration::visitVarRefRValue (AST *idNode) {
     _genLWorFLW(middleReg, 0, resultReg);
     _genSWorFSW(middleReg, offset, REG_FP);
   }
-}
-
-
-void CodeGeneration::visitVarRefLValue (AST *) {
-  std::cerr << "CodeGeneration::visitVarRefLValue not implemented yet" << std::endl;
 }
 
 
