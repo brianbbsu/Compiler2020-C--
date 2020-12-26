@@ -411,10 +411,10 @@ void CodeGeneration::visitIdentifierRValue (AST *idNode) {
   }
 
   // array dereference
-  Register addrReg {REG_T0};
+  Register tmpIntReg {REG_T0};
   Register offsetReg {REG_T1};
   Register resultReg {REG_T2};
-  Register tmpReg {REG_T3};
+  Register middleReg {REG_T3};
   _genLI(offsetReg, 0);
   const ArrayProperties &arrProp {std::get<TypeDescriptor>(idEntry->attribute).arrayProperties};
   for (size_t idx {0}; idx < idNode->children.size(); ++idx) {
@@ -424,8 +424,8 @@ void CodeGeneration::visitIdentifierRValue (AST *idNode) {
     // add by the value of current index
     const auto &dimComponentNode {idNode->children[idx]};
     visitExpressionComponent(dimComponentNode);
-    genLoadFromMemoryLocation(tmpReg, dimComponentNode->place, addrReg);
-    _genADD(offsetReg, offsetReg, tmpReg);
+    genLoadFromMemoryLocation(middleReg, dimComponentNode->place, tmpIntReg);
+    _genADD(offsetReg, offsetReg, middleReg);
   }
   _genMULI(offsetReg, offsetReg, getTypeSize(arrProp.elementType));
   _genLA(resultReg, std::get<LabelInAssembly>(idEntry->place));
@@ -439,8 +439,8 @@ void CodeGeneration::visitIdentifierRValue (AST *idNode) {
   else {
     StackMemoryOffset offset {stackMemManager.getMemory(getTypeSize(idNode->dataType.type))};
     idNode->place = offset;
-    _genLWorFLW(tmpReg, 0, resultReg);
-    _genSWorFSW(tmpReg, offset, REG_FP);
+    _genLWorFLW(middleReg, 0, resultReg);
+    _genSWorFSW(middleReg, offset, REG_FP);
   }
 }
 
@@ -585,12 +585,12 @@ void CodeGeneration::genPassParametersBeforeFunctionCall (const AST *paramListNo
     _genLA(REG_A0, std::get<LabelInAssembly>(childNode->place));
   }
   else if (childNode->dataType.type == FLOAT_TYPE) {
-    Register tmpReg {REG_T0};
-    genLoadFromMemoryLocation(REG_FA0, childNode->place, tmpReg);
+    Register tmpIntReg {REG_T0};
+    genLoadFromMemoryLocation(REG_FA0, childNode->place, tmpIntReg);
   }
   else {
-    Register tmpReg {REG_T0};
-    genLoadFromMemoryLocation(REG_A0, childNode->place, tmpReg);
+    Register tmpIntReg {REG_T0};
+    genLoadFromMemoryLocation(REG_A0, childNode->place, tmpIntReg);
   }
 }
 
@@ -660,11 +660,11 @@ void CodeGeneration::genSaveReturnValue (const MemoryLocation &place, bool isFre
   if (noRetVal)
     return;
   // TODO: handle float return value differently ?
-  Register addrReg {REG_T0};
+  Register tmpIntReg {REG_T0};
   if (isFread)
-    genStoreToMemoryLocation(REG_FA0, place, addrReg);
+    genStoreToMemoryLocation(REG_FA0, place, tmpIntReg);
   else
-    genStoreToMemoryLocation(REG_A0, place, addrReg);
+    genStoreToMemoryLocation(REG_A0, place, tmpIntReg);
 }
 
 
@@ -708,7 +708,7 @@ void CodeGeneration::genConstString (const LabelInAssembly &strLabel, const std:
 
 
 void CodeGeneration::genAssignExpr (const MemoryLocation &LHS, const MemoryLocation &RHS, const DATA_TYPE &typeLHS, const DATA_TYPE &typeRHS) {
-  Register addrReg {REG_T0};
+  Register tmpIntReg {REG_T0};
   Register valueRegRHS;
   Register valueRegLHS;
   switch (typeRHS) {
@@ -732,7 +732,7 @@ void CodeGeneration::genAssignExpr (const MemoryLocation &LHS, const MemoryLocat
       assert(false);
   }
 
-  genLoadFromMemoryLocation(valueRegRHS, RHS, addrReg);
+  genLoadFromMemoryLocation(valueRegRHS, RHS, tmpIntReg);
 
   // move or convert
   if (typeLHS == FLOAT_TYPE && typeRHS == INT_TYPE)
@@ -743,12 +743,12 @@ void CodeGeneration::genAssignExpr (const MemoryLocation &LHS, const MemoryLocat
     _genMV(valueRegLHS, valueRegRHS);
 
   // store
-  genStoreToMemoryLocation(valueRegLHS, LHS, addrReg);
+  genStoreToMemoryLocation(valueRegLHS, LHS, tmpIntReg);
 }
 
 
 void CodeGeneration::genAssignConst (const MemoryLocation &LHS, const Const &value, const DATA_TYPE &typeLHS) {
-  Register addrReg {REG_T0};
+  Register tmpIntReg {REG_T0};
   Register valueRegRHS;
   Register valueRegLHS;
   switch (typeLHS) {
@@ -784,7 +784,7 @@ void CodeGeneration::genAssignConst (const MemoryLocation &LHS, const Const &val
   else
     _genMV(valueRegLHS, valueRegRHS);
 
-  genStoreToMemoryLocation(valueRegLHS, LHS, addrReg);
+  genStoreToMemoryLocation(valueRegLHS, LHS, tmpIntReg);
 }
 
 
@@ -814,28 +814,261 @@ void CodeGeneration::genUnaryNegative (const MemoryLocation &, const MemoryLocat
 }
 
 
-void CodeGeneration::genArithmeticOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &) {
-  std::cerr << "CodeGeneration::genArithmeticOperation not yet implemented" << std::endl;
+void CodeGeneration::genArithmeticOperation (const BINARY_OPERATOR &op, const MemoryLocation &dstLoc, const MemoryLocation &srcLoc1, const MemoryLocation &srcLoc2, const DATA_TYPE &dstType, const DATA_TYPE &srcType1, const DATA_TYPE &srcType2) {
+  Register tmpIntReg {REG_T0};
+  Register dstReg, srcReg1, srcReg2;
+  Register middleReg {REG_T6};
+  // load left operand
+  switch (srcType1) {
+    case INT_TYPE:
+      srcReg1 = REG_T1;
+      break;
+    case FLOAT_TYPE:
+      middleReg = REG_FT6;
+      srcReg1 = REG_FT1;
+      break;
+    default:
+      assert(false);
+  }
+  genLoadFromMemoryLocation(srcReg1, srcLoc1, tmpIntReg);
+  // load right operand
+  switch (srcType2) {
+    case INT_TYPE:
+      srcReg2 = REG_T2;
+      break;
+    case FLOAT_TYPE:
+      middleReg = REG_FT6;
+      srcReg2 = REG_FT2;
+      break;
+    default:
+      assert(false);
+  }
+  genLoadFromMemoryLocation(srcReg2, srcLoc2, tmpIntReg);
+  // convert type if needed
+  if (srcType1 == INT_TYPE && srcType2 == FLOAT_TYPE) {
+    _genFCVT_S_W(REG_FT1, srcReg1);
+    srcReg1 = REG_FT1;
+  }
+  else if (srcType1 == FLOAT_TYPE && srcType2 == INT_TYPE) {
+    _genFCVT_S_W(REG_FT2, srcReg2);
+    srcReg2 = REG_FT2;
+  }
+  // do operation
+  switch (op) {
+    case BINARY_OP_ADD:
+      _genADD(middleReg, srcReg1, srcReg2);
+      break;
+    case BINARY_OP_SUB:
+      _genSUB(middleReg, srcReg1, srcReg2);
+      break;
+    case BINARY_OP_MUL:
+      _genMUL(middleReg, srcReg1, srcReg2);
+      break;
+    case BINARY_OP_DIV:
+      _genDIV(middleReg, srcReg1, srcReg2);
+      break;
+    default:
+      assert(false);
+  }
+  // convert type if needed
+  switch (dstType) {
+    case INT_TYPE:
+      if (isFloatRegister(middleReg))
+        _genFCVT_W_S((dstReg = REG_T3), middleReg);
+      else
+        dstReg = middleReg;
+      break;
+    case FLOAT_TYPE:
+      if (isFloatRegister(middleReg))
+        dstReg = middleReg;
+      else
+        _genFCVT_S_W((dstReg = REG_FT3), middleReg);
+      break;
+    default:
+      assert(false);
+  }
+  // store
+  genStoreToMemoryLocation(dstReg, dstLoc, tmpIntReg);
 }
 
 
-void CodeGeneration::genLogicalOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &) {
-  std::cerr << "CodeGeneration::genLogicalOperation not yet implemented" << std::endl;
+void CodeGeneration::genLogicalOperation (const BINARY_OPERATOR &op, const MemoryLocation &dstLoc, const MemoryLocation &srcLoc1, const MemoryLocation &srcLoc2, const DATA_TYPE &dstType, const DATA_TYPE &srcType1, const DATA_TYPE &srcType2) {
+  Register tmpIntReg {REG_T0};
+  Register tmpFloatReg {REG_FT0};
+  Register dstReg, srcReg1, srcReg2;
+  Register middleReg {REG_T6};
+  // decide the needed preprocessing to be applied
+  bool srcSameType;
+  bool boolSrc;
+  switch (op) {
+    case BINARY_OP_EQ:
+    case BINARY_OP_GE:
+    case BINARY_OP_LE:
+    case BINARY_OP_NE:
+    case BINARY_OP_GT:
+    case BINARY_OP_LT:
+      srcSameType = true;
+      boolSrc = false;
+      break;
+    case BINARY_OP_AND:
+    case BINARY_OP_OR:
+      srcSameType = false;
+      boolSrc = true;
+      break;
+    default:
+      assert(false);
+  }
+  // load left operand
+  switch (srcType1) {
+    case INT_TYPE:
+      srcReg1 = REG_T1;
+      break;
+    case FLOAT_TYPE:
+      srcReg1 = REG_FT1;
+      break;
+    default:
+      assert(false);
+  }
+  genLoadFromMemoryLocation(srcReg1, srcLoc1, tmpIntReg);
+  // load right operand
+  switch (srcType2) {
+    case INT_TYPE:
+      srcReg2 = REG_T2;
+      break;
+    case FLOAT_TYPE:
+      srcReg2 = REG_FT2;
+      break;
+    default:
+      assert(false);
+  }
+  genLoadFromMemoryLocation(srcReg2, srcLoc2, tmpIntReg);
+  // convert type if needed
+  if (srcSameType) {
+    if (srcType1 == INT_TYPE && srcType2 == FLOAT_TYPE) {
+      _genFCVT_S_W(REG_FT1, srcReg1);
+      srcReg1 = REG_FT1;
+    }
+    else if (srcType1 == FLOAT_TYPE && srcType2 == INT_TYPE) {
+      _genFCVT_S_W(REG_FT2, srcReg2);
+      srcReg2 = REG_FT2;
+    }
+  }
+  if (boolSrc) {
+    if (isFloatRegister(srcReg1)) {
+      _genLoadFloatImm(tmpFloatReg, 0.f);
+      _genFEQ_S(REG_T1, srcReg1, tmpFloatReg);
+      srcReg1 = REG_T1;
+      _genSEQZ(srcReg1, srcReg1);
+    }
+    else {
+      _genSNEZ(srcReg1, srcReg1);
+    }
+    if (isFloatRegister(srcReg2)) {
+      _genLoadFloatImm(tmpFloatReg, 0.f);
+      _genFEQ_S(REG_T2, srcReg2, tmpFloatReg);
+      srcReg2 = REG_T2;
+      _genSEQZ(srcReg2, srcReg2);
+    }
+    else {
+      _genSNEZ(srcReg2, srcReg2);
+    }
+  }
+  // do operation
+  switch (op) {
+      case BINARY_OP_EQ:
+        if (isFloatRegister(srcReg1)){
+          _genFEQ_S(middleReg, srcReg1, srcReg2);
+        }
+        else {
+          _genSUB(middleReg, srcReg1, srcReg2);
+          _genSEQZ(middleReg, middleReg);
+        }
+        break;
+      case BINARY_OP_GE:
+        if (isFloatRegister(srcReg1)) {
+          _genFLE_S(middleReg, srcReg2, srcReg1);
+        }
+        else {
+          _genSLT(middleReg, srcReg1, srcReg2);
+          _genSEQZ(middleReg, middleReg);
+        }
+        break;
+      case BINARY_OP_LE:
+        if (isFloatRegister(srcReg1)) {
+          _genFLE_S(middleReg, srcReg1, srcReg2);
+        }
+        else {
+          _genSLT(middleReg, srcReg2, srcReg1);
+          _genSEQZ(middleReg, middleReg);
+        }
+        break;
+      case BINARY_OP_NE:
+        if (isFloatRegister(srcReg1)){
+          _genFEQ_S(middleReg, srcReg1, srcReg2);
+          _genSEQZ(middleReg, middleReg);
+        }
+        else {
+          _genSUB(middleReg, srcReg1, srcReg2);
+          _genSNEZ(middleReg, middleReg);
+        }
+        break;
+      case BINARY_OP_GT:
+        if (isFloatRegister(srcReg1)) {
+          _genFLT_S(middleReg, srcReg2, srcReg1);
+        }
+        else {
+          _genSLT(middleReg, srcReg2, srcReg1);
+        }
+        break;
+      case BINARY_OP_LT:
+        if (isFloatRegister(srcReg1)) {
+          _genFLT_S(middleReg, srcReg1, srcReg2);
+        }
+        else {
+          _genSLT(middleReg, srcReg1, srcReg2);
+        }
+        break;
+      case BINARY_OP_AND:
+        _genAND(middleReg, srcReg1, srcReg2);
+        break;
+      case BINARY_OP_OR:
+        _genOR(middleReg, srcReg1, srcReg2);
+        break;
+      default:
+        assert(false);
+  }
+  // convert type if needed
+  switch (dstType) {
+    case INT_TYPE:
+      dstReg = middleReg;
+      break;
+    case FLOAT_TYPE:
+      _genFCVT_S_W((dstReg = REG_FT3), middleReg);
+      break;
+    default:
+      assert(false);
+  }
+  // store
+  genStoreToMemoryLocation(dstReg, dstLoc, tmpIntReg);
 }
 
 
 void CodeGeneration::genReturn (const MemoryLocation &value) {
-  Register addrReg {REG_T0};
+  Register tmpIntReg {REG_T0};
   Register valueReg {REG_A0};
   if (std::holds_alternative<LabelInAssembly>(value))
-    _genLWorFLW(valueReg, std::get<LabelInAssembly>(value), addrReg);
+    _genLWorFLW(valueReg, std::get<LabelInAssembly>(value), tmpIntReg);
   else
     _genLWorFLW(valueReg, std::get<StackMemoryOffset>(value), REG_FP);
 }
 
 
 void CodeGeneration::_genADD (const Register &rd, const Register &rs1, const Register &rs2) {
-  ofs << "  add " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
+  if (isFloatRegister(rd))
+    ofs << "  fadd.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  else
+    ofs << "  add " << rd << ", " << rs1 << ", " << rs2 << std::endl;
 }
 
 
@@ -845,13 +1078,75 @@ void CodeGeneration::_genADDI (const Register &rd, const Register &rs1, int imm)
 
 
 void CodeGeneration::_genSUB (const Register &rd, const Register &rs1, const Register &rs2) {
-  ofs << "  sub " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
+  if (isFloatRegister(rd))
+    ofs << "  fsub.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  else
+    ofs << "  sub " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genMUL (const Register &rd, const Register &rs1, const Register &rs2) {
+  assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
+  if (isFloatRegister(rd))
+    ofs << "  fmul.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  else
+    ofs << "  mul " << rd << ", " << rs1 << ", " << rs2 << std::endl;
 }
 
 
 void CodeGeneration::_genMULI (const Register &rd, const Register &rs1, int imm) {
   ofs << "  li " << rd << ", " << imm << std::endl
       << "  mul " << rd << ", " << rd << ", " << rs1 << std::endl;
+}
+
+
+void CodeGeneration::_genDIV (const Register &rd, const Register &rs1, const Register &rs2) {
+  assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
+  if (isFloatRegister(rd))
+    ofs << "  fdiv.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+  else
+    ofs << "  div " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genAND (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  and " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genOR (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  or " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genSEQZ (const Register &rd, const Register &rs1) {
+  ofs << "  seqz " << rd << ", " << rs1 << std::endl;
+}
+
+
+void CodeGeneration::_genSNEZ (const Register &rd, const Register &rs1) {
+  ofs << "  seqz " << rd << ", " << rs1 << std::endl;
+}
+
+
+void CodeGeneration::_genSLT (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  slt " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genFEQ_S (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  feq.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genFLT_S (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  flt.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
+}
+
+
+void CodeGeneration::_genFLE_S (const Register &rd, const Register &rs1, const Register &rs2) {
+  ofs << "  fle.s " << rd << ", " << rs1 << ", " << rs2 << std::endl;
 }
 
 
@@ -909,9 +1204,9 @@ void CodeGeneration::_genLI (const Register &rd, int imm) {
 
 void CodeGeneration::_genLoadFloatImm (const Register &rd, float imm) {
   // TODO: use register manager to avoid overwriting the temp register
-  Register tmpReg {REG_T6};
-  _genLI(tmpReg, float2intMemoryRepresent(imm));
-  _genFMV_W_X(rd, tmpReg);
+  Register tmpIntReg {REG_T6};
+  _genLI(tmpIntReg, float2intMemoryRepresent(imm));
+  _genFMV_W_X(rd, tmpIntReg);
 }
 
 
@@ -919,9 +1214,9 @@ void CodeGeneration::_genMV (const Register &rd, const Register &rs1) {
   assert(isFloatRegister(rd) == isFloatRegister(rs1));
   if (isFloatRegister(rd)) {
     // TODO: use register manager to avoid overwriting the temp register
-    Register tmpReg {REG_FT11};
+    Register tmpFloatReg {REG_FT11};
     _genFMV_W_X(REG_FT11, REG_ZERO);
-    ofs << "  fadd.s " << rd << ", " << rs1 << ", " << tmpReg << std::endl;
+    ofs << "  fadd.s " << rd << ", " << rs1 << ", " << tmpFloatReg << std::endl;
   }
   else
     ofs << "  mv " << rd << ", " << rs1 << std::endl;

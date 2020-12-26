@@ -73,7 +73,17 @@ private:
   void _genADD (const Register &, const Register &, const Register &);
   void _genADDI (const Register &, const Register &, int);
   void _genSUB (const Register &, const Register &, const Register &);
+  void _genMUL (const Register &, const Register &, const Register &);
   void _genMULI (const Register &, const Register &, int);
+  void _genDIV (const Register &, const Register &, const Register &);
+  void _genAND (const Register &, const Register &, const Register &);
+  void _genOR (const Register &, const Register &, const Register &);
+  void _genSEQZ (const Register &, const Register &);
+  void _genSNEZ (const Register &, const Register &);
+  void _genSLT (const Register &, const Register &, const Register &);
+  void _genFEQ_S (const Register &, const Register &, const Register &);
+  void _genFLT_S (const Register &, const Register &, const Register &);
+  void _genFLE_S (const Register &, const Register &, const Register &);
   void _genLWorFLW (const Register &, int, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &);
