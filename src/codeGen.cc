@@ -196,8 +196,8 @@ void CodeGeneration::visitTypeSpecifier (AST *typeIDNode) {
 }
 
 
-void CodeGeneration::visitEnumNode (AST *) {
-  std::cerr << "CodeGeneration::visitEnumNode not implemented yet" << std::endl;
+void CodeGeneration::visitEnumNode (AST *enumNode) {
+  // all information needed should be generated in semantic check
 }
 
 
@@ -425,13 +425,12 @@ void CodeGeneration::visitVarRefLValue (AST *idNode) {
 
 void CodeGeneration::visitVarRef (AST *idNode) {
   const auto &idSemanticValue {std::get<IdentifierSemanticValue>(idNode->semanticValue)};
-  SymbolTableEntry *idEntry {symtab.getSymbol(idSemanticValue.identifierName)};
-
-  if (idEntry->symbolKind == ENUMERATOR_SYMBOL) {
-    // whether idEntry has attribute "place" depends on implementation
-    std::cerr << "var_ref does not support enumeration currently" << std::endl;
+  if (idSemanticValue.isEnumerator) {
+    visitConstNode(idNode);
     return;
   }
+
+  SymbolTableEntry *idEntry {symtab.getSymbol(idSemanticValue.identifierName)};
 
   if (idSemanticValue.kind == NORMAL_ID) {
     idNode->place = idEntry->place;
