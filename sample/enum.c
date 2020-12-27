@@ -4,9 +4,9 @@ typedef enum color color_t;
 typedef enum {
     STUDENT,
     TEACHER,
-    PROFESSOR = 2,
+    PROFESSOR = 10,
     JANITOR,
-    PRESIDENT = JANITOR + TEACHER,
+    PRESIDENT = PROFESSOR + TEACHER,
 } person_t;
 
 int main () {
