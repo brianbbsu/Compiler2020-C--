@@ -19,5 +19,26 @@ int main () {
     op = ADD;
     c1 = 1.2;
 
+    write(c1);
+    write("\n");
+    write(c2);
+    write("\n");
+    write(me);
+    write("\n");
+    write(op);
+    write("\n");
+
+    write(STUDENT);
+    write("\n");
+    write(TEACHER);
+    write("\n");
+    write(PROFESSOR);
+    write("\n");
+    write(JANITOR);
+    write("\n");
+    write(PRESIDENT);
+    write("\n");
+
+
     return 0;
 }
