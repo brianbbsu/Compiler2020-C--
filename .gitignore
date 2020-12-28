@@ -33,3 +33,5 @@ lexer.cc
 parser.output
 parser.hh
 AST_Graph.gv
+
+test_zone
