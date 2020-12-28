@@ -178,6 +178,9 @@ void CodeGeneration::visitTypeDeclaration (AST *typeDeclNode) {
     AST *newTypeIDNode {typeDeclNode->children[idx]};
     const TypeDescriptor newTypeTypeDesc {combineTypeAndDecl(baseTypeDesc, newTypeIDNode)};
     const std::string newTypeName {std::get<IdentifierSemanticValue>(newTypeIDNode->semanticValue).identifierName};
+    if (symtab.declaredLocally(newTypeName)) {
+      continue; // allow redeclaration of the same type
+    }
     symtab.addTypeSymbol(std::move(newTypeName), std::move(newTypeTypeDesc));
   }
 }
@@ -196,7 +199,7 @@ void CodeGeneration::visitTypeSpecifier (AST *typeIDNode) {
 }
 
 
-void CodeGeneration::visitEnumNode (AST *enumNode) {
+void CodeGeneration::visitEnumNode ([[maybe_unused]] AST *enumNode) {
   // all information needed should be generated in semantic check
 }
 
