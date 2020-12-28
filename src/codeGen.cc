@@ -63,7 +63,6 @@ inline size_t CodeGeneration::getTypeSize (const TypeDescriptor &typeDesc) {
     }
 
     default:
-      std::cerr << typeDesc << std::endl;
       assert(false);
   }
 }
@@ -650,7 +649,11 @@ void CodeGeneration::genCallerRestoreRegisters () {
 
 
 void CodeGeneration::genPassParametersBeforeFunctionCall (const AST *paramListNode) {
-  std::cerr << "CodeGeneration::genPassParametersBeforeFunctionCall only support one parameter (a0)" << std::endl;
+  static bool warned {false};
+  if (!warned) {
+    std::cerr << "CodeGeneration::genPassParametersBeforeFunctionCall only support one parameter (a0)" << std::endl;
+    warned = true;
+  }
   if (paramListNode->children.size() == 0)
     return;
 
@@ -670,7 +673,11 @@ void CodeGeneration::genPassParametersBeforeFunctionCall (const AST *paramListNo
 
 
 void CodeGeneration::genClearParametersOnStackAfterFunctionCall (const AST *) {
-  std::cerr << "CodeGeneration::genClearParametersOnStackAfterFunctionCall not yet implemented" << std::endl;
+  static bool warned {false};
+  if (!warned) {
+    std::cerr << "CodeGeneration::genClearParametersOnStackAfterFunctionCall not yet implemented" << std::endl;
+    warned = true;
+  }
 }
 
 
@@ -862,13 +869,54 @@ void CodeGeneration::genAssignConst (const MemoryLocation &LHS, const Const &val
 }
 
 
-void CodeGeneration::genLogicalNegation (const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &) {
-  std::cerr << "CodeGeneration::genLogicalNegation not yet implemented" << std::endl;
+void CodeGeneration::genLogicalNegation (const MemoryLocation &dstLoc, const MemoryLocation &srcLoc, const DATA_TYPE &srcType) {
+  Register tmpIntReg {REG_T0};
+  Register resultReg;
+  Register valueReg;
+  Register zeroFloatReg;
+  switch (srcType) {
+    case INT_TYPE:
+      valueReg = REG_T1;
+      _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
+      _genSEQZ(valueReg, valueReg);
+      _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
+      break;
+    case FLOAT_TYPE:
+      zeroFloatReg = REG_FT0;
+      valueReg = REG_FT1;
+      _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
+      _genLoadFloatImm(zeroFloatReg, 0.f);
+      _genFEQ_S(resultReg, valueReg, zeroFloatReg);
+      _genStoreToMemoryLocation(resultReg, dstLoc, tmpIntReg);
+      break;
+    default:
+      assert(false);
+  }
 }
 
 
-void CodeGeneration::genUnaryNegative (const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &) {
-  std::cerr << "CodeGeneration::genUnaryNegative not yet implemented" << std::endl;
+void CodeGeneration::genUnaryNegative (const MemoryLocation &dstLoc, const MemoryLocation &srcLoc, const DATA_TYPE &srcType) {
+  Register tmpIntReg {REG_T0};
+  Register valueReg;
+  Register zeroFloatReg;
+  switch (srcType) {
+    case INT_TYPE:
+      valueReg = REG_T1;
+      _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
+      _genSUB(valueReg, REG_ZERO, valueReg);
+      _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
+      break;
+    case FLOAT_TYPE:
+      valueReg = REG_FT1;
+      zeroFloatReg = REG_FT0;
+      _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
+      _genLoadFloatImm(zeroFloatReg, 0.f);
+      _genSUB(valueReg, zeroFloatReg, valueReg);
+      _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
+      break;
+    default:
+      assert(false);
+  }
 }
 
 
@@ -1323,7 +1371,7 @@ void CodeGeneration::_genMV (const Register &rd, const Register &rs1) {
   if (isFloatRegister(rd)) {
     // TODO: use register manager to avoid overwriting the temp register
     Register tmpFloatReg {REG_FT11};
-    _genFMV_W_X(REG_FT11, REG_ZERO);
+    _genLoadFloatImm(REG_FT11, 0.f);
     ofs << "  fadd.s " << rd << ", " << rs1 << ", " << tmpFloatReg << std::endl;
   }
   else
@@ -1332,16 +1380,19 @@ void CodeGeneration::_genMV (const Register &rd, const Register &rs1) {
 
 
 void CodeGeneration::_genFCVT_W_S (const Register &rd, const Register &rs1) {
+  assert(!isFloatRegister(rd) && isFloatRegister(rs1));
   ofs << "  fcvt.w.s " << rd << ", " << rs1 << std::endl;
 }
 
 
 void CodeGeneration::_genFCVT_S_W (const Register &rd, const Register &rs1) {
+  assert(isFloatRegister(rd) && !isFloatRegister(rs1));
   ofs << "  fcvt.s.w " << rd << ", " << rs1 << std::endl;
 }
 
 
 void CodeGeneration::_genFMV_W_X (const Register &rd, const Register &rs1) {
+  assert(isFloatRegister(rd) && !isFloatRegister(rs1));
   ofs << "  fmv.w.x " << rd << ", " << rs1 << std::endl;
 }
 
