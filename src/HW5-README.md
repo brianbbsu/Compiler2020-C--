@@ -16,4 +16,3 @@ We use `int main ();` instead of `int MAIN ();` as the entry point of the progra
 > "*To implement enum, simply remove 'enum not implemented yet' in the code - it suffices*," Chi-Feng Tsai sighed, after wasting lots of time working on it.
 
 TODO: fix `typedef void X[20]`. It should be a compile error
-TODO: change all 64 bit integer operation to 32 bit, only the needed situation like array dereference can use 64 bit operation.

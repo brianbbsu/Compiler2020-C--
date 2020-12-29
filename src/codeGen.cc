@@ -600,8 +600,33 @@ void CodeGeneration::visitIfStatement (AST *stmtNode) {
 }
 
 
-void CodeGeneration::visitForStatement (AST *) {
-  std::cerr << "CodeGeneration::visitForStatement not yet implemented" << std::endl;
+void CodeGeneration::visitForStatement (AST *stmtNode) {
+  const auto &initListNode {stmtNode->children[0]};
+  const auto &condListNode {stmtNode->children[1]};
+  const auto &iterListNode {stmtNode->children[2]};
+  const auto &bodyStmtNode {stmtNode->children[3]};
+
+  if (initListNode->nodeType != NUL_NODE) {
+    for (const auto &childNode : initListNode->children)
+      visitExpressionComponent(childNode);
+  }
+
+  LabelInAssembly beforeTestLabel {makeBranchLabel()};
+  LabelInAssembly finalLabel {makeBranchLabel()};
+
+  ofs << beforeTestLabel << ":" << std::endl;
+  if (condListNode->nodeType != NUL_NODE) {
+    for (const auto &childNode : condListNode->children)
+      visitExpressionComponent(childNode);
+    genBranchTest(condListNode->children[condListNode->children.size() - 1], finalLabel);
+    visitStatement(bodyStmtNode);
+  }
+  if (iterListNode->nodeType != NUL_NODE) {
+    for (const auto &childNode : iterListNode->children)
+      visitExpressionComponent(childNode);
+  }
+  _genJ(beforeTestLabel);
+  ofs << finalLabel << ":" << std::endl;
 }
 
 
