@@ -13,7 +13,7 @@ ANSI_RED="\033[1;31m"
 ANSI_YELLOW="\033[1;33m"
 ANSI_GREEN="\033[1;32m"
 
-for f in $(find "$TEST_DIR" -name "*.c"); do
+for f in $(find "$TEST_DIR" -name "*.c" | sort -V); do
     EXIT_STATUS=0
     msg=$(./test_single.sh "$f" 2>/dev/null) || EXIT_STATUS=$?
     if [[ $EXIT_STATUS -eq 0 ]]; then

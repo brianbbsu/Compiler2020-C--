@@ -12,6 +12,7 @@ float _fread();
 #define write(X) _Generic((X),                  \
                     int: _write_int,            \
                     float: _write_float,        \
+                    double: _write_float,       \
                     char*: _write_string,       \
                     default: _write_int         \
                  )(X)

@@ -66,7 +66,13 @@ elif [[ $EXIT_STATUS -ne 0 ]]; then
     exit_with_msg "GCC's executable: runtime error" 2
 fi
 
-{ "$PARSER_EXE" input.c ; } > /dev/null 2>&1 || exit_with_msg "The parser exited abnormally" 1
+EXIT_STATUS=0
+{ "$PARSER_EXE" input.c ; } > /dev/null 2>&1 || EXIT_STATUS=$?
+if [[ $EXIT_STATUS -eq 1 ]]; then
+    exit_with_msg "Parser compile error (exit 1)" 1
+elif [[ $EXIT_STATUS -ne 0 ]]; then
+    exit_with_msg "The parser exited abnormally" 1
+fi
 "$GCC" -O0 -static main.S -o our_exec > /dev/null 2>&1 || exit_with_msg "Cannot compile main.S" 1
 
 EXIT_STATUS=0
