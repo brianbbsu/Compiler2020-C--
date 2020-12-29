@@ -19,13 +19,14 @@ struct FunctionSignature {
 
 struct SymbolTableEntry {
   int level;
+  std::string name;
   SymbolKind symbolKind;
   // TypeDescriptor for variable and type, FunctionSignature for function, int for enum const
   std::variant<TypeDescriptor, FunctionSignature, int> attribute;
   // MemoryLocation only used in code generation phase
   MemoryLocation place;
-  SymbolTableEntry (int level_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_) : level(level_), symbolKind(symbolKind_), attribute(attribute_) {}
-  SymbolTableEntry (int level_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_, MemoryLocation place_) : level(level_), symbolKind(symbolKind_), attribute(attribute_), place(place_) {}
+  SymbolTableEntry (int level_, std::string name_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_) : level(level_), name(std::move(name_)), symbolKind(symbolKind_), attribute(attribute_) {}
+  SymbolTableEntry (int level_, std::string name_, SymbolKind symbolKind_, std::variant<TypeDescriptor, FunctionSignature, int> attribute_, MemoryLocation place_) : level(level_), name(std::move(name_)), symbolKind(symbolKind_), attribute(attribute_), place(place_) {}
 };
 
 class SymbolTable {

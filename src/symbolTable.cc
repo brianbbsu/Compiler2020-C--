@@ -93,10 +93,10 @@ void SymbolTable::leaveFunction() {
 std::vector<std::string> SymbolTable::getFunctionsWithNoDefinition() {
   assert(currentLevel == 0);  // can only call at global scope
   std::vector<std::string> result;
-  for (const auto &[name, stk] : table) {
-    if (!stk.empty() && stk.top()->symbolKind == FUNCTION_SYMBOL &&
-        !std::get<FunctionSignature>(stk.top()->attribute).hasDefinition) {
-      result.push_back(name);
+  for (entryStack *stk : scopeModifiedStack.top()) {
+    if (stk->top()->symbolKind == FUNCTION_SYMBOL &&
+        !std::get<FunctionSignature>(stk->top()->attribute).hasDefinition) {
+      result.push_back(stk->top()->name);
     }
   }
   return result;
@@ -122,24 +122,26 @@ SymbolTableEntry *SymbolTable::_addSymbol(const std::string &name, SymbolTableEn
 }
 
 SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name, TypeDescriptor type) {
-  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, VARIABLE_SYMBOL, std::move(type)};
+  SymbolTableEntry *entry =
+      new SymbolTableEntry{currentLevel, name, VARIABLE_SYMBOL, std::move(type)};
   return _addSymbol(name, entry);
 }
 
 SymbolTableEntry *SymbolTable::addVariableSymbol(const std::string &name, TypeDescriptor type, const MemoryLocation &place) {
-  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, VARIABLE_SYMBOL, std::move(type), place};
+  SymbolTableEntry *entry =
+      new SymbolTableEntry{currentLevel, name, VARIABLE_SYMBOL, std::move(type), place};
   return _addSymbol(name, entry);
 }
 
 SymbolTableEntry *SymbolTable::addTypeSymbol(const std::string &name, TypeDescriptor type) {
-  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, TYPE_SYMBOL, std::move(type)};
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, name, TYPE_SYMBOL, std::move(type)};
   return _addSymbol(name, entry);
 }
 
 SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature) {
   SymbolTableEntry *entry =
-      new SymbolTableEntry{currentLevel, FUNCTION_SYMBOL, std::move(signature)};
+      new SymbolTableEntry{currentLevel, name, FUNCTION_SYMBOL, std::move(signature)};
   return _addSymbol(name, entry);
 }
 
@@ -147,11 +149,11 @@ SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature,
                                                  const MemoryLocation &place) {
   SymbolTableEntry *entry =
-      new SymbolTableEntry{currentLevel, FUNCTION_SYMBOL, std::move(signature), place};
+      new SymbolTableEntry{currentLevel, name, FUNCTION_SYMBOL, std::move(signature), place};
   return _addSymbol(name, entry);
 }
 
 SymbolTableEntry *SymbolTable::addEnumeratorSymbol(const std::string &name, int value) {
-  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, ENUMERATOR_SYMBOL, value};
+  SymbolTableEntry *entry = new SymbolTableEntry{currentLevel, name, ENUMERATOR_SYMBOL, value};
   return _addSymbol(name, entry);
 }
