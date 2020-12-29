@@ -152,6 +152,20 @@ void SemanticAnalysis::processProgramNode(AST *programNode) {
         raiseError("Unknown child node type");
     }
   }
+  checkFunctionDefinition();
+}
+
+void SemanticAnalysis::checkFunctionDefinition() {
+  std::vector<std::string> functionsWithNoDefinition = symbolTable.getFunctionsWithNoDefinition();
+  for (const std::string &funcName : functionsWithNoDefinition) {
+    printHelper(std::cerr, "Function '", funcName, "' declared but not defined");
+    anySemanticError = true;
+  }
+  SymbolTableEntry *entry = symbolTable.getSymbol("main");
+  if (entry == nullptr || entry->symbolKind != FUNCTION_SYMBOL) {
+    printHelper(std::cerr, "main function is not defined");
+    anySemanticError = true;
+  }
 }
 
 void SemanticAnalysis::processVariableDeclListNode(AST *variableDeclListNode) {
@@ -278,6 +292,12 @@ void SemanticAnalysis::processTypeDeclaration(AST *declarationNode) {
     const IdentifierSemanticValue &declaratorSemanticValue =
         std::get<IdentifierSemanticValue>(declaratorIDNode->semanticValue);
     assert(declaratorSemanticValue.kind != WITH_INIT_ID);
+    if (declaratorTypeDesc.type == ARR_TYPE &&
+        declaratorTypeDesc.arrayProperties.elementType == VOID_TYPE) {
+      semanticError(declaratorIDNode, "declaration of '", declaratorSemanticValue.identifierName,
+                    "' as array of voids");
+      continue;
+    }
     if (symbolTable.declaredLocally(declaratorSemanticValue.identifierName)) {
       SymbolTableEntry *origEntry = symbolTable.getSymbol(declaratorSemanticValue.identifierName);
       if (origEntry->symbolKind != TYPE_SYMBOL) {

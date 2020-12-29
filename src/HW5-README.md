@@ -14,5 +14,3 @@ We use `int main ();` instead of `int MAIN ();` as the entry point of the progra
 > ![](./diff.png)
 >
 > "*To implement enum, simply remove 'enum not implemented yet' in the code - it suffices*," Chi-Feng Tsai sighed, after wasting lots of time working on it.
-
-TODO: fix `typedef void X[20]`. It should be a compile error

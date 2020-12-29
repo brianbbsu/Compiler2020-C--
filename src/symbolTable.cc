@@ -90,6 +90,18 @@ void SymbolTable::leaveFunction() {
   currentFunctionEntry = nullptr;
 }
 
+std::vector<std::string> SymbolTable::getFunctionsWithNoDefinition() {
+  assert(currentLevel == 0);  // can only call at global scope
+  std::vector<std::string> result;
+  for (const auto &[name, stk] : table) {
+    if (!stk.empty() && stk.top()->symbolKind == FUNCTION_SYMBOL &&
+        !std::get<FunctionSignature>(stk.top()->attribute).hasDefinition) {
+      result.push_back(name);
+    }
+  }
+  return result;
+}
+
 bool SymbolTable::isGlobalScope() { return currentLevel == 0; }
 
 SymbolTableEntry *SymbolTable::getSymbol(const std::string &name) {

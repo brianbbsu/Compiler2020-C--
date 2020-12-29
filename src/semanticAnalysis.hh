@@ -31,6 +31,7 @@ class SemanticAnalysis {
   DATA_TYPE getLargerType(DATA_TYPE type1, DATA_TYPE type2);
   bool isTypeCompatible(const TypeDescriptor &lhsTypeDesc, const TypeDescriptor &rhsTypeDesc);
   void processProgramNode(AST *programNode);
+  void checkFunctionDefinition(); // ensure all function declared has corresponding definition
   void processVariableDeclListNode(AST *variableDeclListNode);
   void processVariableDeclaration(AST *declarationNode);
   void processTypeDeclaration(AST *declarationNode);

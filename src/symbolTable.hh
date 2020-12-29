@@ -58,6 +58,8 @@ class SymbolTable {
   SymbolTableEntry *getCurrentFunction();
   void leaveFunction();
 
+  std::vector<std::string> getFunctionsWithNoDefinition();
+
   bool isGlobalScope();
   bool declaredLocally(const std::string &name);
   SymbolTableEntry *getSymbol(const std::string &name);
