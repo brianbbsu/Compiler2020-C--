@@ -71,6 +71,7 @@ private:
   void genLogicalOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &);
   void genReturn (const MemoryLocation &);
   void genBranchTest (AST *, const LabelInAssembly &);
+  void genShortCircuitEvaluation (const MemoryLocation &, const DATA_TYPE &, const BINARY_OPERATOR &, const MemoryLocation &, const LabelInAssembly &);
 
   // function name starts with an underscore means it does not allocate register, only use the registers passed in parameters
   void _genADD (const Register &, const Register &, const Register &);
@@ -87,6 +88,7 @@ private:
   void _genFLT_S (const Register &, const Register &, const Register &);
   void _genFLE_S (const Register &, const Register &, const Register &);
   void _genBEQZ (const Register &, const LabelInAssembly &);
+  void _genBNEZ (const Register &, const LabelInAssembly &);
   void _genJ (const LabelInAssembly &);
   void _genLWorFLW (const Register &, int, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &, const Register &);

@@ -287,13 +287,11 @@ void CodeGeneration::visitExpression (AST *exprNode) {
     genAssignConst(exprNode->place, exprSemanticValue.constEvalValue, exprNode->dataType.type);
   }
   else {
-    for (AST *operandNode : exprNode->children) {
-      visitExpressionComponent(operandNode);
-    }
     switch (exprSemanticValue.kind) {
       case UNARY_OPERATION: {
         UNARY_OPERATOR op {std::get<UNARY_OPERATOR>(exprSemanticValue.op)};
         AST *operand {exprNode->children[0]};
+        visitExpressionComponent(operand);
         switch (op) {
           case UNARY_OP_LOGICAL_NEGATION:
             genLogicalNegation(exprNode->place, operand->place, operand->dataType.type);
@@ -316,6 +314,8 @@ void CodeGeneration::visitExpression (AST *exprNode) {
           case BINARY_OP_SUB:
           case BINARY_OP_MUL:
           case BINARY_OP_DIV:
+            visitExpressionComponent(lOperand);
+            visitExpressionComponent(rOperand);
             genArithmeticOperation(op, exprNode->place, lOperand->place, rOperand->place, exprNode->dataType.type, lOperand->dataType.type, rOperand->dataType.type);
             break;
           case BINARY_OP_EQ:
@@ -324,9 +324,18 @@ void CodeGeneration::visitExpression (AST *exprNode) {
           case BINARY_OP_NE:
           case BINARY_OP_GT:
           case BINARY_OP_LT:
+            visitExpressionComponent(lOperand);
+            visitExpressionComponent(rOperand);
+            genLogicalOperation(op, exprNode->place, lOperand->place, rOperand->place, exprNode->dataType.type, lOperand->dataType.type, rOperand->dataType.type);
+            break;
           case BINARY_OP_AND:
           case BINARY_OP_OR:
+            LabelInAssembly shortCircuitLabel {makeBranchLabel()};
+            visitExpressionComponent(lOperand);
+            genShortCircuitEvaluation(lOperand->place, lOperand->dataType.type, op, exprNode->place, shortCircuitLabel);
+            visitExpressionComponent(rOperand);
             genLogicalOperation(op, exprNode->place, lOperand->place, rOperand->place, exprNode->dataType.type, lOperand->dataType.type, rOperand->dataType.type);
+            ofs << shortCircuitLabel << ":" << std::endl;
             break;
         }
         break;
@@ -1197,6 +1206,36 @@ void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branch
 }
 
 
+void CodeGeneration::genShortCircuitEvaluation (const MemoryLocation &srcLoc, const DATA_TYPE &srcType, const BINARY_OPERATOR &op, const MemoryLocation &dstLoc, const LabelInAssembly &finalLabel) {
+  Register tmpIntReg {REG_T0};
+  Register middleReg;
+  Register valueReg {REG_T2};
+  switch (srcType) {
+    case INT_TYPE:
+      middleReg = REG_T1;
+      break;
+    case FLOAT_TYPE:
+      middleReg = REG_FT1;
+      break;
+    default:
+      assert(false);
+  }
+  _genLoadFromMemoryLocation(middleReg, srcLoc, tmpIntReg);
+  _genConvertToBool(valueReg, middleReg);
+  _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
+  switch (op) {
+    case BINARY_OP_AND:
+      _genBEQZ(valueReg, finalLabel);
+      break;
+    case BINARY_OP_OR:
+      _genBNEZ(valueReg, finalLabel);
+      break;
+    default:
+      assert(false);
+  }
+}
+
+
 void CodeGeneration::_genADD (const Register &rd, const Register &rs1, const Register &rs2) {
   assert(isFloatRegister(rd) == isFloatRegister(rs1) && isFloatRegister(rs1) == isFloatRegister(rs2));
   if (isFloatRegister(rd))
@@ -1280,6 +1319,11 @@ void CodeGeneration::_genFLE_S (const Register &rd, const Register &rs1, const R
 
 void CodeGeneration::_genBEQZ (const Register &rs1, const LabelInAssembly &offset) {
   ofs << "  beqz " << rs1 << ", " << offset << std::endl;
+}
+
+
+void CodeGeneration::_genBNEZ (const Register &rs1, const LabelInAssembly &offset) {
+  ofs << "  bnez " << rs1 << ", " << offset << std::endl;
 }
 
 
