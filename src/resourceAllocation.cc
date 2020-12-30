@@ -3,17 +3,25 @@
 
 
 
-StackMemoryManager::StackMemoryManager () : isInProcedure{false}, insertOffset{0} {
+StackMemoryManager::StackMemoryManager () : isInProcedure{false}, isInParameter{false}, insertOffset{insertOffsetInitValue}, parameterOffset{parameterOffsetInitValue} {
 }
 
 
 StackMemoryManager::~StackMemoryManager () {}
 
 
-StackMemoryOffset StackMemoryManager::getMemory (size_t size) {
+StackMemoryOffset StackMemoryManager::getVariableMemory (size_t size) {
   assert(isInProcedure);
   insertOffset -= size;
   return insertOffset;
+}
+
+
+StackMemoryOffset StackMemoryManager::getParameterMemory (size_t size) {
+  assert(isInParameter);
+  StackMemoryOffset retval {parameterOffset};
+  parameterOffset += size;
+  return retval;
 }
 
 
@@ -22,16 +30,34 @@ size_t StackMemoryManager::getProcedureMemoryConsumption () {
 }
 
 
+size_t StackMemoryManager::getParameterMemoryConsumption () {
+  return static_cast<size_t>(parameterOffset - parameterOffsetInitValue);
+}
+
+
 void StackMemoryManager::enterProcedure () {
   assert(!isInProcedure);
   isInProcedure = true;
-  insertOffset = 0;
+  insertOffset = insertOffsetInitValue;
 }
 
 
 void StackMemoryManager::leaveProcedure () {
   assert(isInProcedure);
   isInProcedure = false;
+}
+
+
+void StackMemoryManager::enterParameterDeclaration () {
+  assert(!isInParameter);
+  isInParameter = true;
+  parameterOffset = parameterOffsetInitValue;
+}
+
+
+void StackMemoryManager::leaveParameterDeclaration () {
+  assert(isInParameter);
+  isInParameter = false;
 }
 
 

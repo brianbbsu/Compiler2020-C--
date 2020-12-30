@@ -5,7 +5,7 @@ Author:
 
 ## HW5 - Code Generation
 
-We use `int main ();` instead of `int MAIN ();` as the entry point of the program.
+We use `int main ();` instead of `int MAIN ();` as the entry point in the program source code. We use `_start_MAIN` as the entry point in the compiled assembly.
 
 > **Anecdote**
 > After finishing all the features required in hw5, Chi-Feng Tsai had been struggling with supporting `enum`. He made the behavior of `visitEnumNode(AST *)` in `codeGen.cc` very similar to `processEnumNode(AST *)` in `semanticAnalysis.cc`, and spent much time on debugging what was wrong with the symbol table. However, the bugs just existed.

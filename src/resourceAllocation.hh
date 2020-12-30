@@ -25,9 +25,9 @@ const std::vector<Register> CALLER_SAVE_REGISTERS {
  *                +------------                                   +------------
  *                | ...                                           | ...
  *                +------------                                   +------------
- *                | param 10                                      | param 10
+ *                | param 2                                       | param 10
  *                +------------                                   +------------
- *       fp+16 -> | param 9                              fp+16 -> | param 9
+ *       fp+16 -> | param 1                              fp+16 -> | param 9
  *                +------------                                   +------------
  *        fp+8 -> | ret addr                              fp+8 -> | ret addr
  *                +------------                                   +------------
@@ -55,7 +55,7 @@ const std::vector<Register> CALLER_SAVE_REGISTERS {
  *  +-------------------------------+-------------+               +------------
  *  | different from course slides !!!            |               | ...
  *  | sp points to **empty** in the course slides |               +------------
- *  +---------------------------------------------+       sp+8 -> | param 8
+ *  +---------------------------------------------+       sp+8 -> | param 1
  *                                                                +------------
  *                                                          sp -> | **empty**
  *                                                                +------------
@@ -63,18 +63,29 @@ const std::vector<Register> CALLER_SAVE_REGISTERS {
  */
 class StackMemoryManager {
 private:
+  static const int insertOffsetInitValue {0};
+  static const int parameterOffsetInitValue {16};
+
   bool isInProcedure;
-  int insertOffset; // initialized to 0
+  bool isInParameter;
+  int insertOffset;
+  int parameterOffset;
 
 public:
   StackMemoryManager ();
   ~StackMemoryManager ();
 
-  StackMemoryOffset getMemory (size_t);
+  StackMemoryOffset getVariableMemory (size_t);
   size_t getProcedureMemoryConsumption ();
+
+  StackMemoryOffset getParameterMemory (size_t);
+  size_t getParameterMemoryConsumption ();
 
   void enterProcedure ();
   void leaveProcedure ();
+
+  void enterParameterDeclaration ();
+  void leaveParameterDeclaration ();
 };
 
 

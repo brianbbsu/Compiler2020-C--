@@ -11,10 +11,24 @@
 
 enum SymbolKind { VARIABLE_SYMBOL, TYPE_SYMBOL, FUNCTION_SYMBOL, ENUMERATOR_SYMBOL };
 
+struct FunctionParameter {
+  TypeDescriptor dataType;
+  std::variant<Register, StackMemoryOffset> place;
+  FunctionParameter (TypeDescriptor dataType_) : dataType{dataType_}, place{0} {}
+  FunctionParameter (TypeDescriptor dataType_, Register reg_) : dataType{dataType_}, place{reg_} {}
+  FunctionParameter (TypeDescriptor dataType_, StackMemoryOffset offset_) : dataType{dataType_}, place{offset_} {}
+  bool operator == (const FunctionParameter &rhs) const {
+    return dataType == rhs.dataType && place == rhs.place;
+  }
+};
+
 struct FunctionSignature {
   DATA_TYPE returnType;
-  std::vector<TypeDescriptor> parameters;
+  std::vector<FunctionParameter> parameters;
   bool hasDefinition;
+  size_t parameterMemoryConsumption;
+  FunctionSignature (const DATA_TYPE &returnType_, const std::vector<FunctionParameter> &parameters_, bool hasDefinition_) : returnType{returnType_}, parameters{parameters_}, hasDefinition{hasDefinition_}, parameterMemoryConsumption{0} {}
+  FunctionSignature (const DATA_TYPE &returnType_, const std::vector<FunctionParameter> &parameters_, bool hasDefinition_, size_t parameterMemoryConsumption_) : returnType{returnType_}, parameters{parameters_}, hasDefinition{hasDefinition_}, parameterMemoryConsumption{parameterMemoryConsumption_} {}
 };
 
 struct SymbolTableEntry {
@@ -68,7 +82,7 @@ class SymbolTable {
   SymbolTableEntry *addVariableSymbol(const std::string &name, TypeDescriptor type, const MemoryLocation &place);
   SymbolTableEntry *addTypeSymbol(const std::string &name, TypeDescriptor type);
   SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature);
-  SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature, const MemoryLocation &place);
+  SymbolTableEntry *addFunctionSymbol(const std::string &name, FunctionSignature signature, const LabelInAssembly &place);
   SymbolTableEntry *addEnumeratorSymbol(const std::string &name, int value);
 };
 

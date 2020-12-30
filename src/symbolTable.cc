@@ -17,9 +17,9 @@ void SymbolTable::resetSymbolTable() {
   addTypeSymbol("int", TypeDescriptor(INT_TYPE));
   addTypeSymbol("float", TypeDescriptor(FLOAT_TYPE));
   addTypeSymbol("void", TypeDescriptor(VOID_TYPE));
-  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true}, LabelInAssembly{"_read_int"});
-  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true}, LabelInAssembly{"_read_float"});
-  addFunctionSymbol("write", FunctionSignature{VOID_TYPE, {WRITE_PARAMETER_TYPE}, true});
+  addFunctionSymbol("read", FunctionSignature{INT_TYPE, {}, true, 0}, LabelInAssembly{"_read_int"});
+  addFunctionSymbol("fread", FunctionSignature{FLOAT_TYPE, {}, true, 0}, LabelInAssembly{"_read_float"});
+  addFunctionSymbol("write", FunctionSignature{VOID_TYPE, {{WRITE_PARAMETER_TYPE}}, true, 0});
 }
 
 void SymbolTable::openScope() {
@@ -147,7 +147,7 @@ SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
 
 SymbolTableEntry *SymbolTable::addFunctionSymbol(const std::string &name,
                                                  FunctionSignature signature,
-                                                 const MemoryLocation &place) {
+                                                 const LabelInAssembly &place) {
   SymbolTableEntry *entry =
       new SymbolTableEntry{currentLevel, name, FUNCTION_SYMBOL, std::move(signature), place};
   return _addSymbol(name, entry);

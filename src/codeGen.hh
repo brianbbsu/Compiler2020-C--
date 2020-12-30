@@ -13,6 +13,7 @@ private:
   AST *prog;
   std::ofstream ofs;
 
+  bool hasSetRoundingMode;
   SymbolTable symtab;
   StackMemoryManager stackMemManager;
   AssemblySection currentSection;
@@ -20,7 +21,8 @@ private:
   static TypeDescriptor combineTypeAndDecl (const TypeDescriptor &, AST *);
   static size_t getTypeSize (const TypeDescriptor &);
   static LabelInAssembly makeGlobalVarLabel (const std::string &);
-  static LabelInAssembly makeFuncLabel (const std::string &);
+  static LabelInAssembly makeFuncStartLabel (const std::string &);
+  static LabelInAssembly makeFuncEndLabel (const std::string &);
   static LabelInAssembly makeFrameSizeLabel (const LabelInAssembly &);
   static LabelInAssembly makeConstStringLabel ();
   static LabelInAssembly makeBranchLabel ();
@@ -36,7 +38,7 @@ private:
   void visitEnumNode (AST *);
   void visitFunctionDeclaration (AST *);
   void visitFunctionDefinition (AST *);
-  std::vector<TypeDescriptor> visitParameterDeclarationList (AST *, bool);
+  std::tuple<std::vector<FunctionParameter>, size_t> visitParameterDeclarationList (AST *);
   void visitExpressionComponent (AST *);
   void visitExpression (AST *);
   void visitFunctionCallStatement (AST *);
@@ -56,20 +58,21 @@ private:
   void genCallerRestoreRegisters ();
   void genFunctionPrologue (const LabelInAssembly &);
   void genFunctionEpilogue (const LabelInAssembly &, size_t);
-  void genCallFunction (const LabelInAssembly &);
-  void genPassParametersBeforeFunctionCall (const AST *);
-  void genClearParametersOnStackAfterFunctionCall (const AST *);
-  void genSaveReturnValue (const MemoryLocation &, bool);
+  void genCallFunction (const LabelInAssembly &, size_t);
+  void genPassParametersBeforeFunctionCall (bool, const AST *, const std::vector<FunctionParameter> &, size_t);
+  void genClearParametersOnStackAfterFunctionCall (bool, size_t);
+  void genSaveReturnValue (const MemoryLocation &, const DATA_TYPE &);
   void genInitGlobalVarArray (const LabelInAssembly &, size_t);
   void genInitGlobalVarScalar (const LabelInAssembly &, const Const &);
   void genConstString (const LabelInAssembly &, const std::string &);
   void genAssignExpr (const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &);
   void genAssignConst (const MemoryLocation &, const Const &, const DATA_TYPE &);
+  void genAssignParameters (const FunctionParameter &, size_t, const MemoryLocation &, const DATA_TYPE &);
   void genLogicalNegation (const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &);
   void genUnaryNegative (const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &);
   void genArithmeticOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &);
   void genLogicalOperation (const BINARY_OPERATOR &, const MemoryLocation &, const MemoryLocation &, const MemoryLocation &, const DATA_TYPE &, const DATA_TYPE &, const DATA_TYPE &);
-  void genReturn (const MemoryLocation &);
+  void genReturnValue (AST *);
   void genBranchTest (AST *, const LabelInAssembly &);
   void genShortCircuitEvaluation (const MemoryLocation &, const DATA_TYPE &, const BINARY_OPERATOR &, const MemoryLocation &, const LabelInAssembly &);
 
@@ -81,6 +84,7 @@ private:
   void _genDIV (const Register &, const Register &, const Register &);
   void _genAND (const Register &, const Register &, const Register &);
   void _genOR (const Register &, const Register &, const Register &);
+  void _genFNEG_S (const Register &, const Register &);
   void _genSEQZ (const Register &, const Register &);
   void _genSNEZ (const Register &, const Register &);
   void _genSLT (const Register &, const Register &, const Register &);
@@ -89,7 +93,7 @@ private:
   void _genFLE_S (const Register &, const Register &, const Register &);
   void _genBEQZ (const Register &, const LabelInAssembly &);
   void _genBNEZ (const Register &, const LabelInAssembly &);
-  void _genJ (const LabelInAssembly &);
+  void _genJ (const LabelInAssembly &, const Register &);
   void _genLWorFLW (const Register &, int, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &);

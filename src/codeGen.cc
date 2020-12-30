@@ -6,7 +6,7 @@
 
 
 CodeGeneration::CodeGeneration (AST *_prog, const std::string &_filename)
-: filename{_filename}, prog{_prog}, ofs{_filename, std::ofstream::out}, currentSection{ASSEMBLY_DATA_SECTION} {
+: filename{_filename}, prog{_prog}, ofs{_filename, std::ofstream::out}, hasSetRoundingMode{false}, currentSection{ASSEMBLY_DATA_SECTION} {
 }
 
 
@@ -73,9 +73,14 @@ inline LabelInAssembly CodeGeneration::makeGlobalVarLabel (const std::string &va
 }
 
 
-inline LabelInAssembly CodeGeneration::makeFuncLabel (const std::string &funcName) {
+inline LabelInAssembly CodeGeneration::makeFuncStartLabel (const std::string &funcName) {
   if (funcName == "main") return "_start_MAIN";
-  return "f_" + funcName;
+  return "f_start_" + funcName;
+}
+
+
+inline LabelInAssembly CodeGeneration::makeFuncEndLabel (const std::string &funcName) {
+  return "f_end_" + funcName;
 }
 
 
@@ -231,7 +236,7 @@ void CodeGeneration::visitVariableDeclaration (AST *varDeclNode) {
       }
     }
     else { // local variable declaration
-      StackMemoryOffset stackOffset {stackMemManager.getMemory(varSize)};
+      StackMemoryOffset stackOffset {stackMemManager.getVariableMemory(varSize)};
       varPlace.value = stackOffset;
 
       if (varSemanticValue.kind == WITH_INIT_ID) {
@@ -280,7 +285,7 @@ void CodeGeneration::visitExpressionComponent (AST *expressionComponent) {
 
 void CodeGeneration::visitExpression (AST *exprNode) {
   size_t dataSize {getTypeSize(exprNode->dataType)};
-  exprNode->place = stackMemManager.getMemory(dataSize);
+  exprNode->place = stackMemManager.getVariableMemory(dataSize);
 
   const EXPRSemanticValue &exprSemanticValue = std::get<EXPRSemanticValue>(exprNode->semanticValue);
   if (exprSemanticValue.isConstEval) {
@@ -349,7 +354,7 @@ void CodeGeneration::visitExpression (AST *exprNode) {
 
 void CodeGeneration::visitFunctionCallStatement (AST *stmtNode) {
   size_t dataSize {getTypeSize(stmtNode->dataType)};
-  stmtNode->place = stackMemManager.getMemory(dataSize);
+  stmtNode->place = stackMemManager.getVariableMemory(dataSize);
 
   AST *funcNameIDNode {stmtNode->children[0]};
   AST *paramListNode {stmtNode->children[1]};
@@ -382,14 +387,13 @@ void CodeGeneration::visitFunctionCallStatement (AST *stmtNode) {
     visitExpressionComponent(paramNode);
   }
 
+  const FunctionSignature &funcSig {std::get<FunctionSignature>(funcEntry->attribute)};
+
   genCallerSaveRegisters();
-  // TODO: pass argument (on register and on stack (if needed))
-  genPassParametersBeforeFunctionCall(paramListNode);
-  genCallFunction(funcLabel);
+  genPassParametersBeforeFunctionCall((funcName == "write"), paramListNode, funcSig.parameters, funcSig.parameterMemoryConsumption);
+  genCallFunction(funcLabel, funcSig.parameterMemoryConsumption);
   if (!(stmtNode->dataType.type == VOID_TYPE))
-    genSaveReturnValue(stmtNode->place, (funcName == "fread"));
-  genClearParametersOnStackAfterFunctionCall(paramListNode);
-  // TODO: clear argument (on stack only)
+    genSaveReturnValue(stmtNode->place, stmtNode->dataType.type);
   genCallerRestoreRegisters();
 }
 
@@ -402,7 +406,7 @@ void CodeGeneration::visitAssignmentStatement (AST *stmtNode) {
   visitExpressionComponent(RHSExprNode);
 
   size_t dataSize {getTypeSize(stmtNode->dataType)};
-  stmtNode->place = stackMemManager.getMemory(dataSize);
+  stmtNode->place = stackMemManager.getVariableMemory(dataSize);
   genAssignExpr(LHSIDNode->place, RHSExprNode->place, LHSIDNode->dataType.type, RHSExprNode->dataType.type);
   genAssignExpr(stmtNode->place, LHSIDNode->place, stmtNode->dataType.type, LHSIDNode->dataType.type);
   // TODO: release stack memory allocated to child nodes;
@@ -419,7 +423,7 @@ void CodeGeneration::visitConstNode (AST *constNode) {
   }
 
   size_t dataSize {getTypeSize(constNode->dataType)};
-  constNode->place = stackMemManager.getMemory(dataSize);
+  constNode->place = stackMemManager.getVariableMemory(dataSize);
   genAssignConst(constNode->place, getConstValue(constNode), constNode->dataType.type);
 }
 
@@ -453,7 +457,7 @@ void CodeGeneration::visitVarRef (AST *idNode) {
   Register appliedReg {REG_T1};
   Register tmpIntReg {REG_T2};
   const ArrayProperties &arrProp {std::get<TypeDescriptor>(idEntry->attribute).arrayProperties};
-  StackMemoryOffset valueOffset {stackMemManager.getMemory(SIZEOF_REGISTER)};
+  StackMemoryOffset valueOffset {stackMemManager.getVariableMemory(SIZEOF_REGISTER)};
   _genSWorFSW(REG_ZERO, valueOffset, REG_FP);
   for (size_t idx {0}; idx < idNode->children.size(); ++idx) {
     // multiplied by the size of current dimension
@@ -488,22 +492,29 @@ void CodeGeneration::visitVarRef (AST *idNode) {
 }
 
 
-void CodeGeneration::visitFunctionDeclaration (AST *declNode) {
+void CodeGeneration::visitFunctionDeclaration ([[maybe_unused]] AST *declNode) {
   // Although the function definition will not conflict with declaration (by semantic check),
-  // the reason why we cannot ignore this AST node is that there maybe type declaration in the return type.
+  // the reason why we cannot ignore this AST node is that some information is needed to be generated.
+  // For example, function call statement may appear before the function definition.
+  // Another example is that `struct` in the return type has to be declared, although it is not a required feature in this project.
   // We have to do something on symbol table as in semantic check.
   const auto &returnTypeNode {declNode->children[0]};
   const auto &funcNameIDNode {declNode->children[1]};
   const auto &paramListNode {declNode->children[2]};
 
   const std::string &funcName {std::get<IdentifierSemanticValue>(funcNameIDNode->semanticValue).identifierName};
-  visitTypeSpecifier(returnTypeNode);
+  LabelInAssembly funcLabel {makeFuncStartLabel(funcName)};
 
+  visitTypeSpecifier(returnTypeNode);
   symtab.openScope();
-  const std::vector<TypeDescriptor> params {visitParameterDeclarationList(paramListNode, false)};
+  const auto &[params, parameterTotalSize] {visitParameterDeclarationList(paramListNode)};
   symtab.closeScope();
 
-  symtab.addFunctionSymbol(funcName, FunctionSignature{returnTypeNode->dataType.type, std::move(params), false});
+  symtab.addFunctionSymbol(
+    funcName,
+    FunctionSignature{returnTypeNode->dataType.type, std::move(params), false, parameterTotalSize},
+    funcLabel
+  );
 }
 
 
@@ -516,12 +527,23 @@ void CodeGeneration::visitFunctionDefinition (AST *defiNode) {
   visitTypeSpecifier(returnTypeNode);
   const TypeDescriptor &returnTypeDesc {returnTypeNode->dataType};
   const std::string &funcName {std::get<IdentifierSemanticValue>(funcNameIDNode->semanticValue).identifierName};
-  LabelInAssembly funcLabel {makeFuncLabel(funcName)};
+  LabelInAssembly funcLabel {makeFuncStartLabel(funcName)};
 
   symtab.openScope();
-  const std::vector<TypeDescriptor> params {visitParameterDeclarationList(paramListNode, true)};
+  const auto &[params, paramTotalSize] {visitParameterDeclarationList(paramListNode)};
   symtab.stashScope();
-  SymbolTableEntry *funcEntry {symtab.addFunctionSymbol(funcName, {returnTypeDesc.type, std::move(params), true}, funcLabel)};
+  SymbolTableEntry *funcEntry;
+  if (symtab.declaredLocally(funcName)) {
+    funcEntry = symtab.getSymbol(funcName);
+    std::get<FunctionSignature>(funcEntry->attribute).hasDefinition = true;
+  }
+  else {
+    funcEntry = symtab.addFunctionSymbol(
+      funcName,
+      FunctionSignature{returnTypeDesc.type, std::move(params), true, paramTotalSize},
+      funcLabel
+    );
+  }
   symtab.popStash();
   symtab.enterFunction(funcEntry);
   stackMemManager.enterProcedure();
@@ -534,9 +556,33 @@ void CodeGeneration::visitFunctionDefinition (AST *defiNode) {
 }
 
 
-std::vector<TypeDescriptor> CodeGeneration::visitParameterDeclarationList (AST *paramListNode, bool isDefinition) {
-  // TODO: handle function declaration/definition that has parameters
-  return std::vector<TypeDescriptor>{};
+std::tuple<std::vector<FunctionParameter>, size_t> CodeGeneration::visitParameterDeclarationList (AST *paramListNode) {
+  stackMemManager.enterParameterDeclaration();
+  std::vector<FunctionParameter> paramList;
+  for (const auto &childNode : paramListNode->children) {
+    AST *typeNode {childNode->children[0]};
+    AST *IDNode {childNode->children[1]};
+
+    visitTypeSpecifier(typeNode);
+    TypeDescriptor paramTypeDesc {combineTypeAndDecl(typeNode->dataType, IDNode)};
+    size_t paramSize;
+    if (paramTypeDesc.type == ARR_TYPE) {
+      paramTypeDesc.arrayProperties.dimensions[0] = EMPTY_DIM;
+      paramSize = SIZEOF_REGISTER;
+    }
+    else {
+      paramSize = getTypeSize(paramTypeDesc);
+    }
+    const std::string &paramName {std::get<IdentifierSemanticValue>(IDNode->semanticValue).identifierName};
+    StackMemoryOffset paramPlace {stackMemManager.getParameterMemory(paramSize)};
+
+    if (paramName != "")
+      symtab.addVariableSymbol(paramName, paramTypeDesc, paramPlace);
+    paramList.push_back(FunctionParameter{paramTypeDesc, paramPlace});
+  }
+  size_t paramTotalSize {stackMemManager.getParameterMemoryConsumption()};
+  stackMemManager.leaveParameterDeclaration();
+  return {paramList, paramTotalSize};
 }
 
 
@@ -597,12 +643,14 @@ void CodeGeneration::visitIfStatement (AST *stmtNode) {
   const auto &trueStmtNode {stmtNode->children[1]};
   const auto &falseStmtNode {stmtNode->children[2]};
 
+  Register tmpIntReg {REG_T0};
+
   visitExpressionComponent(testNode);
   LabelInAssembly branchElseLabel {makeBranchLabel()};
   LabelInAssembly branchFinalLabel {makeBranchLabel()};
   genBranchTest(testNode, branchElseLabel);
   visitStatement(trueStmtNode);
-  _genJ(branchFinalLabel);
+  _genJ(branchFinalLabel, tmpIntReg);
   ofs << branchElseLabel << ":" << std::endl;
   visitStatement(falseStmtNode);
   ofs << branchFinalLabel << ":" << std::endl;
@@ -620,6 +668,7 @@ void CodeGeneration::visitForStatement (AST *stmtNode) {
       visitExpressionComponent(childNode);
   }
 
+  Register tmpIntReg {REG_T0};
   LabelInAssembly beforeTestLabel {makeBranchLabel()};
   LabelInAssembly finalLabel {makeBranchLabel()};
 
@@ -634,7 +683,7 @@ void CodeGeneration::visitForStatement (AST *stmtNode) {
     for (const auto &childNode : iterListNode->children)
       visitExpressionComponent(childNode);
   }
-  _genJ(beforeTestLabel);
+  _genJ(beforeTestLabel, tmpIntReg);
   ofs << finalLabel << ":" << std::endl;
 }
 
@@ -643,6 +692,7 @@ void CodeGeneration::visitWhileStatement (AST *stmtNode) {
   const auto &testNode {stmtNode->children[0]};
   const auto &bodyStmtNode {stmtNode->children[1]};
 
+  Register tmpIntReg {REG_T0};
   LabelInAssembly beforeTestLabel {makeBranchLabel()};
   LabelInAssembly finalLabel {makeBranchLabel()};
 
@@ -650,19 +700,21 @@ void CodeGeneration::visitWhileStatement (AST *stmtNode) {
   visitExpressionComponent(testNode);
   genBranchTest(testNode, finalLabel);
   visitStatement(bodyStmtNode);
-  _genJ(beforeTestLabel);
+  _genJ(beforeTestLabel, tmpIntReg);
   ofs << finalLabel << ":" << std::endl;
 }
 
 
 void CodeGeneration::visitReturnStatement (AST *retStmtNode) {
   AST *exprNode {retStmtNode->children[0]};
-  if (exprNode->nodeType == NUL_NODE) {
-    return;
+  if (exprNode->nodeType != NUL_NODE) {
+    visitExpressionComponent(exprNode);
+    genReturnValue(exprNode);
   }
 
-  visitExpressionComponent(exprNode);
-  genReturn(exprNode->place);
+  Register tmpIntReg {REG_T0};
+  const std::string &currFuncName {symtab.getCurrentFunction()->name};
+  _genJ(makeFuncEndLabel(currFuncName), tmpIntReg);
 }
 
 
@@ -678,39 +730,50 @@ void CodeGeneration::genCallerRestoreRegisters () {
   for (size_t idx {0}; idx < CALLER_SAVE_REGISTERS.size(); ++idx) {
     _genLWorFLW(CALLER_SAVE_REGISTERS[idx], -8 * idx, REG_SP);
   }
-  _genADDI(REG_SP, REG_SP, -8 * CALLER_SAVE_REGISTERS.size());
+  _genADDI(REG_SP, REG_SP, 8 * CALLER_SAVE_REGISTERS.size());
 }
 
 
-void CodeGeneration::genPassParametersBeforeFunctionCall (const AST *paramListNode) {
-  static bool warned {false};
-  if (!warned) {
-    std::cerr << "CodeGeneration::genPassParametersBeforeFunctionCall only support one parameter (a0)" << std::endl;
-    warned = true;
-  }
+void CodeGeneration::genPassParametersBeforeFunctionCall (bool isWriteFunction, const AST *paramListNode, const std::vector<FunctionParameter> &paramDeclList, size_t paramTotalSize) {
   if (paramListNode->children.size() == 0)
     return;
 
-  const auto &childNode {paramListNode->children[0]};
-  if (childNode->dataType.type == CONST_STRING_TYPE) {
-    _genLA(REG_A0, std::get<LabelInAssembly>(childNode->place.value));
-  }
-  else if (childNode->dataType.type == FLOAT_TYPE) {
-    Register tmpIntReg {REG_T0};
-    _genLoadFromMemoryLocation(REG_FA0, childNode->place, tmpIntReg);
-  }
-  else {
-    Register tmpIntReg {REG_T0};
-    _genLoadFromMemoryLocation(REG_A0, childNode->place, tmpIntReg);
-  }
-}
-
-
-void CodeGeneration::genClearParametersOnStackAfterFunctionCall (const AST *) {
-  static bool warned {false};
-  if (!warned) {
-    std::cerr << "CodeGeneration::genClearParametersOnStackAfterFunctionCall not yet implemented" << std::endl;
-    warned = true;
+  for (size_t idx {0}; idx < paramListNode->children.size(); ++idx) {
+    const auto &childNode {paramListNode->children[idx]};
+    const auto &paramInformation {paramDeclList[idx]};
+    switch (childNode->dataType.type) {
+      case INT_TYPE: {
+        Register tmpIntReg {REG_T0};
+        if (isWriteFunction) {
+          _genLoadFromMemoryLocation(REG_A0, childNode->place, tmpIntReg);
+          break;
+        }
+        genAssignParameters(paramInformation, paramTotalSize, childNode->place, childNode->dataType.type);
+        break;
+      }
+      case FLOAT_TYPE: {
+        Register tmpIntReg {REG_T0};
+        if (isWriteFunction) {
+          _genLoadFromMemoryLocation(REG_FA0, childNode->place, tmpIntReg);
+          break;
+        }
+        genAssignParameters(paramInformation, paramTotalSize, childNode->place, childNode->dataType.type);
+        break;
+      }
+      case CONST_STRING_TYPE: {
+        assert(isWriteFunction);
+        _genLA(REG_A0, std::get<LabelInAssembly>(childNode->place.value));
+        break;
+      }
+      case ARR_TYPE: {
+        // if an array is passed as a parameter, then we pass the absolute memory address of the array
+        assert(!isWriteFunction);
+        genAssignParameters(paramInformation, paramTotalSize, childNode->place, childNode->dataType.type);
+        break;
+      }
+      default:
+        assert(false);
+    }
   }
 }
 
@@ -746,6 +809,9 @@ void CodeGeneration::genFunctionEpilogue (const LabelInAssembly &funcLabel, size
     currentSection = ASSEMBLY_TEXT_SECTION;
   }
 
+  const std::string &currFuncName {symtab.getCurrentFunction()->name};
+  ofs << makeFuncEndLabel(currFuncName) << ":" << std::endl;
+
   // step 1: restore registers
   for (size_t idx {0}; idx < CALLEE_SAVE_REGISTERS.size(); ++idx) {
     _genLWorFLW(CALLEE_SAVE_REGISTERS[idx], 8 * idx, REG_SP);
@@ -764,20 +830,25 @@ void CodeGeneration::genFunctionEpilogue (const LabelInAssembly &funcLabel, size
 }
 
 
-void CodeGeneration::genCallFunction (const LabelInAssembly &funcLabel) {
-  _genADDI(REG_SP, REG_SP, -SIZEOF_REGISTER);
+void CodeGeneration::genCallFunction (const LabelInAssembly &funcLabel, size_t paramTotalSize) {
+  _genADDI(REG_SP, REG_SP, -(SIZEOF_REGISTER + paramTotalSize));
   _genCALL(funcLabel);
-  _genADDI(REG_SP, REG_SP, SIZEOF_REGISTER);
+  _genADDI(REG_SP, REG_SP, (SIZEOF_REGISTER + paramTotalSize));
 }
 
 
-void CodeGeneration::genSaveReturnValue (const MemoryLocation &place, bool isFread) {
-  // TODO: handle float return value differently ?
+void CodeGeneration::genSaveReturnValue (const MemoryLocation &place, const DATA_TYPE &retType) {
   Register tmpIntReg {REG_T0};
-  if (isFread)
-    _genStoreToMemoryLocation(REG_FA0, place, tmpIntReg);
-  else
-    _genStoreToMemoryLocation(REG_A0, place, tmpIntReg);
+  switch (retType) {
+    case INT_TYPE:
+      _genStoreToMemoryLocation(REG_A0, place, tmpIntReg);
+      break;
+    case FLOAT_TYPE:
+      _genStoreToMemoryLocation(REG_FA0, place, tmpIntReg);
+      break;
+    default:
+      assert(false);
+  }
 }
 
 
@@ -855,7 +926,7 @@ void CodeGeneration::genAssignExpr (const MemoryLocation &LHS, const MemoryLocat
   else if (typeLHS == INT_TYPE && typeRHS == FLOAT_TYPE)
     _genFCVT_W_S(valueRegLHS, valueRegRHS);
   else
-    _genMV(valueRegLHS, valueRegRHS); // this operation is redundant since LHS and RHS are exactly the same register
+    valueRegLHS = valueRegRHS;
 
   // store
   _genStoreToMemoryLocation(valueRegLHS, LHS, tmpIntReg);
@@ -897,9 +968,55 @@ void CodeGeneration::genAssignConst (const MemoryLocation &LHS, const Const &val
   else if (typeLHS == INT_TYPE && value.const_type == FLOATC)
     _genFCVT_W_S(valueRegLHS, valueRegRHS);
   else
-    _genMV(valueRegLHS, valueRegRHS);
+    valueRegLHS = valueRegRHS;
 
   _genStoreToMemoryLocation(valueRegLHS, LHS, tmpIntReg);
+}
+
+
+void CodeGeneration::genAssignParameters (const FunctionParameter &paramInformation, size_t paramTotalSize, const MemoryLocation &srcLoc, const DATA_TYPE &srcType) {
+  Register tmpIntReg {REG_T0};
+  Register valueRegRHS;
+  Register valueRegLHS;
+  if (srcType != ARR_TYPE) {
+    switch (srcType) {
+      case INT_TYPE:
+        valueRegRHS = REG_T1;
+        break;
+      case FLOAT_TYPE:
+        valueRegRHS = REG_FT1;
+        break;
+      default:
+        assert(false);
+    }
+    _genLoadFromMemoryLocation(valueRegRHS, srcLoc, tmpIntReg);
+  }
+  else { // srcType == ARR_TYPE
+    valueRegRHS = REG_T1;
+    if (srcLoc.isAbsoluteMemoryAddress)
+      _genLD(valueRegRHS, std::get<StackMemoryOffset>(srcLoc.value), REG_FP);
+    else if (std::holds_alternative<StackMemoryOffset>(srcLoc.value))
+      _genADDI(valueRegRHS, REG_FP, std::get<StackMemoryOffset>(srcLoc.value));
+    else { // holds LabelInAssembly
+      _genLA(valueRegRHS, std::get<LabelInAssembly>(srcLoc.value));
+    }
+  }
+
+  if (paramInformation.dataType.type == FLOAT_TYPE && srcType == INT_TYPE) {
+    valueRegLHS = REG_FT1;
+    _genFCVT_S_W(valueRegLHS, valueRegRHS);
+  }
+  else if (paramInformation.dataType.type == INT_TYPE && srcType == FLOAT_TYPE) {
+    valueRegLHS = REG_T1;
+    _genFCVT_W_S(valueRegLHS, valueRegRHS);
+  }
+  else
+    valueRegLHS = valueRegRHS;
+
+  if (std::holds_alternative<Register>(paramInformation.place))
+    _genMV(std::get<Register>(paramInformation.place), valueRegLHS);
+  else
+    _genSD(valueRegLHS, - paramTotalSize - 16 + std::get<StackMemoryOffset>(paramInformation.place), REG_SP);
 }
 
 
@@ -918,6 +1035,7 @@ void CodeGeneration::genLogicalNegation (const MemoryLocation &dstLoc, const Mem
     case FLOAT_TYPE:
       zeroFloatReg = REG_FT0;
       valueReg = REG_FT1;
+      resultReg = REG_T1;
       _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
       _genLoadFloatImm(zeroFloatReg, 0.f);
       _genFEQ_S(resultReg, valueReg, zeroFloatReg);
@@ -932,7 +1050,6 @@ void CodeGeneration::genLogicalNegation (const MemoryLocation &dstLoc, const Mem
 void CodeGeneration::genUnaryNegative (const MemoryLocation &dstLoc, const MemoryLocation &srcLoc, const DATA_TYPE &srcType) {
   Register tmpIntReg {REG_T0};
   Register valueReg;
-  Register zeroFloatReg;
   switch (srcType) {
     case INT_TYPE:
       valueReg = REG_T1;
@@ -942,10 +1059,8 @@ void CodeGeneration::genUnaryNegative (const MemoryLocation &dstLoc, const Memor
       break;
     case FLOAT_TYPE:
       valueReg = REG_FT1;
-      zeroFloatReg = REG_FT0;
       _genLoadFromMemoryLocation(valueReg, srcLoc, tmpIntReg);
-      _genLoadFloatImm(zeroFloatReg, 0.f);
-      _genSUB(valueReg, zeroFloatReg, valueReg);
+      _genFNEG_S(valueReg, valueReg);
       _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
       break;
     default:
@@ -1179,9 +1294,29 @@ void CodeGeneration::genLogicalOperation (const BINARY_OPERATOR &op, const Memor
 }
 
 
-void CodeGeneration::genReturn (const MemoryLocation &value) {
+void CodeGeneration::genReturnValue (AST *exprNode) {
   Register tmpIntReg {REG_T0};
-  _genLoadFromMemoryLocation(REG_A0, value, tmpIntReg);
+  Register valueReg;
+  const DATA_TYPE &exprType {exprNode->dataType.type};
+  const DATA_TYPE &retType {std::get<FunctionSignature>(symtab.getCurrentFunction()->attribute).returnType};
+  if (exprType == INT_TYPE && retType == INT_TYPE) {
+    _genLoadFromMemoryLocation(REG_A0, exprNode->place, tmpIntReg);
+  }
+  else if (exprType == FLOAT_TYPE && retType == FLOAT_TYPE) {
+    _genLoadFromMemoryLocation(REG_FA0, exprNode->place, tmpIntReg);
+  }
+  else if (exprType == INT_TYPE && retType == FLOAT_TYPE) {
+    valueReg = REG_T1;
+    _genLoadFromMemoryLocation(valueReg, exprNode->place, tmpIntReg);
+    _genFCVT_S_W(REG_FA0, valueReg);
+  }
+  else if (exprType == FLOAT_TYPE && retType == INT_TYPE) {
+    valueReg = REG_FT1;
+    _genLoadFromMemoryLocation(valueReg, exprNode->place, tmpIntReg);
+    _genFCVT_W_S(REG_A0, valueReg);
+  }
+  else
+    assert(false);
 }
 
 
@@ -1246,7 +1381,13 @@ void CodeGeneration::_genADD (const Register &rd, const Register &rs1, const Reg
 
 
 void CodeGeneration::_genADDI (const Register &rd, const Register &rs1, int imm) {
-  ofs << "  addi " << rd << ", " << rs1 << ", " << imm << std::endl;
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  if (!(-2048 <= imm && imm < 2048)) {
+    _genLI(tmpIntReg, imm);
+    _genADD(rd, rs1, tmpIntReg);
+  }
+  else
+    ofs << "  addi " << rd << ", " << rs1 << ", " << imm << std::endl;
 }
 
 
@@ -1287,6 +1428,11 @@ void CodeGeneration::_genOR (const Register &rd, const Register &rs1, const Regi
 }
 
 
+void CodeGeneration::_genFNEG_S (const Register &rd, const Register &rs1) {
+  ofs << "  fneg.s " << rd << ", " << rs1 << std::endl;
+}
+
+
 void CodeGeneration::_genSEQZ (const Register &rd, const Register &rs1) {
   ofs << "  seqz " << rd << ", " << rs1 << std::endl;
 }
@@ -1318,27 +1464,45 @@ void CodeGeneration::_genFLE_S (const Register &rd, const Register &rs1, const R
 
 
 void CodeGeneration::_genBEQZ (const Register &rs1, const LabelInAssembly &offset) {
-  ofs << "  beqz " << rs1 << ", " << offset << std::endl;
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  LabelInAssembly middleLabel {makeBranchLabel()};
+  ofs << "  bnez " << rs1 << ", " << middleLabel << std::endl;
+  _genJ(offset, tmpIntReg); // handle too far away offset
+  ofs << middleLabel << ":" << std::endl;
 }
 
 
 void CodeGeneration::_genBNEZ (const Register &rs1, const LabelInAssembly &offset) {
-  ofs << "  bnez " << rs1 << ", " << offset << std::endl;
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  LabelInAssembly middleLabel {makeBranchLabel()};
+  ofs << "  beqz " << rs1 << ", " << middleLabel << std::endl;
+  _genJ(offset, tmpIntReg); // handle too far away offset
+  ofs << middleLabel << ":" << std::endl;
 }
 
 
-void CodeGeneration::_genJ (const LabelInAssembly &offset) {
-  ofs << "  j " << offset << std::endl;
+void CodeGeneration::_genJ (const LabelInAssembly &offset, const Register &rt) {
+  _genLA(rt, offset);
+  ofs << "  jr " << rt << std::endl;
 }
 
 
 void CodeGeneration::_genLWorFLW (const Register &rd, int imm, const Register &rs1) {
   assert(!isFloatRegister(rs1));
   assert(rd != REG_FP && rd != REG_SP);
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  if (!(-2048 <= imm && imm < 2048)) {
+    _genLI(tmpIntReg, imm);
+    _genADD(tmpIntReg, tmpIntReg, rs1);
+    imm = 0;
+  }
+  else {
+    tmpIntReg = rs1;
+  }
   if (isFloatRegister(rd))
-    ofs << "  flw " << rd << ", " << imm << "(" << rs1 << ")" << std::endl;
+    ofs << "  flw " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
   else
-    ofs << "  lw " << rd << ", " << imm << "(" << rs1 << ")" << std::endl;
+    ofs << "  lw " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
 }
 
 
@@ -1360,7 +1524,16 @@ void CodeGeneration::_genLWorFLW (const Register &rd, const LabelInAssembly &sym
 
 
 void CodeGeneration::_genLD (const Register &rd, int imm, const Register &rs1) {
-  ofs << "  ld " << rd << ", " << imm << "(" << rs1 << ")" << std::endl;
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  if (!(-2048 <= imm && imm < 2048)) {
+    _genLI(tmpIntReg, imm);
+    _genADD(tmpIntReg, tmpIntReg, rs1);
+    imm = 0;
+  }
+  else {
+    tmpIntReg = rs1;
+  }
+  ofs << "  ld " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
 }
 
 
@@ -1381,10 +1554,19 @@ void CodeGeneration::_genLoadFromMemoryLocation (const Register &rd, const Memor
 void CodeGeneration::_genSWorFSW (const Register &rd, int imm, const Register &rs2) {
   assert(!isFloatRegister(rs2));
   assert(rd != REG_FP && rd != REG_SP);
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  if (!(-2048 <= imm && imm < 2048)) {
+    _genLI(tmpIntReg, imm);
+    _genADD(tmpIntReg, tmpIntReg, rs2);
+    imm = 0;
+  }
+  else {
+    tmpIntReg = rs2;
+  }
   if (isFloatRegister(rd))
-    ofs << "  fsw " << rd << ", " << imm << "(" << rs2 << ")" << std::endl;
+    ofs << "  fsw " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
   else
-    ofs << "  sw " << rd << ", " << imm << "(" << rs2 << ")" << std::endl;
+    ofs << "  sw " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
 }
 
 
@@ -1399,7 +1581,16 @@ void CodeGeneration::_genSWorFSW (const Register &rd, const LabelInAssembly &sym
 
 
 void CodeGeneration::_genSD (const Register &rd, int imm, const Register &rs1) {
-  ofs << "  sd " << rd << ", " << imm << "(" << rs1 << ")" << std::endl;
+  Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
+  if (!(-2048 <= imm && imm < 2048)) {
+    _genLI(tmpIntReg, imm);
+    _genADD(tmpIntReg, tmpIntReg, rs1);
+    imm = 0;
+  }
+  else {
+    tmpIntReg = rs1;
+  }
+  ofs << "  sd " << rd << ", " << imm << "(" << tmpIntReg << ")" << std::endl;
 }
 
 
@@ -1438,10 +1629,7 @@ void CodeGeneration::_genLoadFloatImm (const Register &rd, float imm) {
 void CodeGeneration::_genMV (const Register &rd, const Register &rs1) {
   assert(isFloatRegister(rd) == isFloatRegister(rs1));
   if (isFloatRegister(rd)) {
-    // TODO: use register manager to avoid overwriting the temp register
-    Register tmpFloatReg {REG_FT11};
-    _genLoadFloatImm(REG_FT11, 0.f);
-    ofs << "  fadd.s " << rd << ", " << rs1 << ", " << tmpFloatReg << std::endl;
+    ofs << "  fmv.s " << rd << ", " << rs1 << std::endl;
   }
   else
     ofs << "  mv " << rd << ", " << rs1 << std::endl;
@@ -1450,6 +1638,11 @@ void CodeGeneration::_genMV (const Register &rd, const Register &rs1) {
 
 void CodeGeneration::_genFCVT_W_S (const Register &rd, const Register &rs1) {
   assert(!isFloatRegister(rd) && isFloatRegister(rs1));
+  if (!hasSetRoundingMode) {
+    _genLI(rd, 1);
+    ofs << "  fsrm " << rd << std::endl;
+    hasSetRoundingMode = true;
+  }
   ofs << "  fcvt.w.s " << rd << ", " << rs1 << std::endl;
 }
 

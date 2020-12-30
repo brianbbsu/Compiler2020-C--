@@ -341,7 +341,7 @@ void SemanticAnalysis::processFunctionDeclaration(AST *declarationNode) {
   }
 
   symbolTable.openScope();
-  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode, false);
+  std::vector<FunctionParameter> parameters = processParameterDeclList(parameterListNode, false);
   symbolTable.closeScope();
   if (parameterListNode->dataType.type == ERROR_TYPE) return;
   if (symbolTable.declaredLocally(functionName)) {
@@ -389,7 +389,7 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   }
 
   symbolTable.openScope();
-  std::vector<TypeDescriptor> parameters = processParameterDeclList(parameterListNode, true);
+  std::vector<FunctionParameter> parameters = processParameterDeclList(parameterListNode, true);
   if (parameterListNode->dataType.type == ERROR_TYPE) {
     symbolTable.closeScope();  // skip this function
     return;
@@ -430,10 +430,10 @@ void SemanticAnalysis::processFunctionDefinition(AST *declarationNode) {
   symbolTable.closeScope();
 }
 
-std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *paramListNode,
+std::vector<FunctionParameter> SemanticAnalysis::processParameterDeclList(AST *paramListNode,
                                                                        bool isDefinition) {
   assert(paramListNode->nodeType == PARAM_LIST_NODE);
-  std::vector<TypeDescriptor> parameterDeclList;
+  std::vector<FunctionParameter> parameterDeclList;
   for (size_t idx = 0; idx < paramListNode->children.size(); ++idx) {
     AST *child = paramListNode->children[idx];
     assert(std::get<DECLSemanticValue>(child->semanticValue).kind == FUNCTION_PARAMETER_DECL);
@@ -443,7 +443,7 @@ std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *para
     processTypeSpecifier(typeSpecifierNode);
     if (typeSpecifierNode->dataType.type == ERROR_TYPE) {
       paramListNode->dataType = ERROR_TYPE;
-      parameterDeclList.push_back(ERROR_TYPE);
+      parameterDeclList.push_back({ERROR_TYPE});
       continue;
     }
     const TypeDescriptor &typeSpecifierTypeDesc = typeSpecifierNode->dataType;
@@ -451,7 +451,7 @@ std::vector<TypeDescriptor> SemanticAnalysis::processParameterDeclList(AST *para
         getDeclaratorType(typeSpecifierTypeDesc, parameterNameIDNode);
     if (parameterTypeDesc.type == ERROR_TYPE) {
       paramListNode->dataType = ERROR_TYPE;
-      parameterDeclList.push_back(ERROR_TYPE);
+      parameterDeclList.push_back({ERROR_TYPE});
       continue;
     }
     if (parameterTypeDesc.type == ARR_TYPE)
@@ -594,7 +594,7 @@ void SemanticAnalysis::processFunctionCallStatement(AST *statementNode) {
     processExpressionComponent(parameterNode);
     if (parameterNode->dataType.type == ERROR_TYPE) continue;
     const TypeDescriptor &callTypeDesc = parameterNode->dataType;
-    const TypeDescriptor &funcTypeDesc = funcSignature.parameters[idx];
+    const TypeDescriptor &funcTypeDesc = funcSignature.parameters[idx].dataType;
     if (callTypeDesc.type == VOID_TYPE) {
       semanticError(parameterNode, "invalid use of void expression");
       continue;

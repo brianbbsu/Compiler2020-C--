@@ -38,7 +38,7 @@ class SemanticAnalysis {
 
   void processFunctionDeclaration(AST *declarationNode);  // only declare
   void processFunctionDefinition(AST *declarationNode);   // with definition
-  std::vector<TypeDescriptor> processParameterDeclList(AST *paramListNode, bool isDefinition);
+  std::vector<FunctionParameter> processParameterDeclList(AST *paramListNode, bool isDefinition);
 
   void processBlockNode(AST *blockNode);
   void processStatement(AST *statementNode);

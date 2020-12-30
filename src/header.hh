@@ -22,7 +22,7 @@ void printHelper(std::ostream &os, const T &arg, const Args &... args) {
               __PRETTY_FUNCTION__, ": ", __VA_ARGS__),                                \
       exit(1)
 
-#define EMPTY_DIM -1
+#define EMPTY_DIM (-1)
 
 /* Enum declaration */
 enum DATA_TYPE {
