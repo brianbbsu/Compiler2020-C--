@@ -480,7 +480,9 @@ void CodeGeneration::visitVarRef (AST *idNode) {
   // added by base address
   if (std::holds_alternative<LabelInAssembly>(idEntry->place.value))
     _genLA(appliedReg, std::get<LabelInAssembly>(idEntry->place.value));
-  else {
+  else if (idEntry->place.isAbsoluteMemoryAddress) {
+    _genLD(appliedReg, std::get<StackMemoryOffset>(idEntry->place.value), REG_FP);
+  } else {
     _genMV(appliedReg, REG_FP);
     _genADDI(appliedReg, appliedReg, std::get<StackMemoryOffset>(idEntry->place.value));
   }
@@ -565,19 +567,25 @@ std::tuple<std::vector<FunctionParameter>, size_t> CodeGeneration::visitParamete
 
     visitTypeSpecifier(typeNode);
     TypeDescriptor paramTypeDesc {combineTypeAndDecl(typeNode->dataType, IDNode)};
+    const std::string &paramName {std::get<IdentifierSemanticValue>(IDNode->semanticValue).identifierName};
     size_t paramSize;
+    MemoryLocation symtabPlace; // specially handle isAbsoluteMemoryAddress of array type
+    StackMemoryOffset paramPlace;
     if (paramTypeDesc.type == ARR_TYPE) {
       paramTypeDesc.arrayProperties.dimensions[0] = EMPTY_DIM;
       paramSize = SIZEOF_REGISTER;
+      symtabPlace.isAbsoluteMemoryAddress = true;
     }
     else {
       paramSize = getTypeSize(paramTypeDesc);
+      symtabPlace.isAbsoluteMemoryAddress = false;
     }
-    const std::string &paramName {std::get<IdentifierSemanticValue>(IDNode->semanticValue).identifierName};
-    StackMemoryOffset paramPlace {stackMemManager.getParameterMemory(paramSize)};
+    paramPlace = stackMemManager.getParameterMemory(paramSize);
+    symtabPlace.value = paramPlace;
 
     if (paramName != "")
-      symtab.addVariableSymbol(paramName, paramTypeDesc, paramPlace);
+      symtab.addVariableSymbol(paramName, paramTypeDesc, symtabPlace);
+
     paramList.push_back(FunctionParameter{paramTypeDesc, paramPlace});
   }
   size_t paramTotalSize {stackMemManager.getParameterMemoryConsumption()};
