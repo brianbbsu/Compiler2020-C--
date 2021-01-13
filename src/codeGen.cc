@@ -1021,8 +1021,11 @@ void CodeGeneration::genAssignParameters (const FunctionParameter &paramInformat
   else
     valueRegLHS = valueRegRHS;
 
+
   if (std::holds_alternative<Register>(paramInformation.place))
     _genMV(std::get<Register>(paramInformation.place), valueRegLHS);
+  else if (srcType != ARR_TYPE)
+    _genSWorFSW(valueRegLHS, - paramTotalSize - 16 + std::get<StackMemoryOffset>(paramInformation.place), REG_SP);
   else
     _genSD(valueRegLHS, - paramTotalSize - 16 + std::get<StackMemoryOffset>(paramInformation.place), REG_SP);
 }
@@ -1351,6 +1354,7 @@ void CodeGeneration::genBranchTest (AST *testNode, const LabelInAssembly &branch
 
 void CodeGeneration::genShortCircuitEvaluation (const MemoryLocation &srcLoc, const DATA_TYPE &srcType, const BINARY_OPERATOR &op, const MemoryLocation &dstLoc, const LabelInAssembly &finalLabel) {
   Register tmpIntReg {REG_T0};
+  Register tmpFloatReg {REG_FT8};
   Register middleReg;
   Register valueReg {REG_T2};
   switch (srcType) {
@@ -1364,7 +1368,7 @@ void CodeGeneration::genShortCircuitEvaluation (const MemoryLocation &srcLoc, co
       assert(false);
   }
   _genLoadFromMemoryLocation(middleReg, srcLoc, tmpIntReg);
-  _genConvertToBool(valueReg, middleReg);
+  _genConvertToBool(valueReg, middleReg, tmpFloatReg);
   _genStoreToMemoryLocation(valueReg, dstLoc, tmpIntReg);
   switch (op) {
     case BINARY_OP_AND:
@@ -1545,6 +1549,7 @@ void CodeGeneration::_genLD (const Register &rd, int imm, const Register &rs1) {
 }
 
 
+// this function cannot load 64-bit data
 void CodeGeneration::_genLoadFromMemoryLocation (const Register &rd, const MemoryLocation &memLoc, const Register &rt) {
   if (std::holds_alternative<LabelInAssembly>(memLoc.value))
     _genLWorFLW(rd, std::get<LabelInAssembly>(memLoc.value), rt);
@@ -1589,6 +1594,7 @@ void CodeGeneration::_genSWorFSW (const Register &rd, const LabelInAssembly &sym
 
 
 void CodeGeneration::_genSD (const Register &rd, int imm, const Register &rs1) {
+  assert(!isFloatRegister(rd) && !isFloatRegister(rs1));
   Register tmpIntReg {REG_T5}; // use register manager to avoid overwriting data in temporary register
   if (!(-2048 <= imm && imm < 2048)) {
     _genLI(tmpIntReg, imm);
@@ -1664,12 +1670,6 @@ void CodeGeneration::_genFCVT_S_W (const Register &rd, const Register &rs1) {
 void CodeGeneration::_genFMV_W_X (const Register &rd, const Register &rs1) {
   assert(isFloatRegister(rd) && !isFloatRegister(rs1));
   ofs << "  fmv.w.x " << rd << ", " << rs1 << std::endl;
-}
-
-
-void CodeGeneration::_genConvertToBool (const Register &rd, const Register &rs1) {
-  assert(!isFloatRegister(rd) && !isFloatRegister(rs1));
-  _genSNEZ(rd, rs1);
 }
 
 

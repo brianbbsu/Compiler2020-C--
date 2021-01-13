@@ -110,7 +110,6 @@ private:
   void _genFCVT_W_S (const Register &, const Register &); // convert float to int
   void _genFCVT_S_W (const Register &, const Register &); // convert int to float
   void _genFMV_W_X (const Register &, const Register &);
-  void _genConvertToBool (const Register &, const Register &);
   void _genConvertToBool (const Register &, const Register &, const Register &);
   void _genCALL (const LabelInAssembly &);
   void _genRET ();
