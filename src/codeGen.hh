@@ -16,12 +16,15 @@ private:
   bool hasSetRoundingMode;
   SymbolTable symtab;
   StackMemoryManager stackMemManager;
+  RegisterManager regManager;
   AssemblySection currentSection;
 
   static TypeDescriptor combineTypeAndDecl (const TypeDescriptor &, AST *);
   static size_t getTypeSize (const TypeDescriptor &);
   static LabelInAssembly makeGlobalVarLabel (const std::string &);
   static LabelInAssembly makeFuncStartLabel (const std::string &);
+  static LabelInAssembly makeFuncPrologueStoreRegistersLabelBefore (const std::string &);
+  static LabelInAssembly makeFuncPrologueStoreRegistersLabelAfter (const std::string &);
   static LabelInAssembly makeFuncEndLabel (const std::string &);
   static LabelInAssembly makeFrameSizeLabel (const LabelInAssembly &);
   static LabelInAssembly makeConstStringLabel ();
@@ -57,7 +60,7 @@ private:
   void genCallerSaveRegisters ();
   void genCallerRestoreRegisters ();
   void genFunctionPrologue (const LabelInAssembly &);
-  void genFunctionEpilogue (const LabelInAssembly &, size_t);
+  void genFunctionEpilogue (const LabelInAssembly &);
   void genCallFunction (const LabelInAssembly &, size_t);
   void genPassParametersBeforeFunctionCall (bool, const AST *, const std::vector<FunctionParameter> &, size_t);
   void genClearParametersOnStackAfterFunctionCall (bool, size_t);
@@ -93,16 +96,16 @@ private:
   void _genFLE_S (const Register &, const Register &, const Register &);
   void _genBEQZ (const Register &, const LabelInAssembly &);
   void _genBNEZ (const Register &, const LabelInAssembly &);
-  void _genJ (const LabelInAssembly &, const Register &);
+  void _genJ (const LabelInAssembly &);
   void _genLWorFLW (const Register &, int, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &, const Register &);
   void _genLWorFLW (const Register &, const LabelInAssembly &);
   void _genLD (const Register &, int, const Register &);
-  void _genLoadFromMemoryLocation (const Register &, const MemoryLocation &, const Register &);
+  void _genLoadFromMemoryLocation (const Register &, const MemoryLocation &);
   void _genSWorFSW (const Register &, int, const Register &);
-  void _genSWorFSW (const Register &, const LabelInAssembly &, const Register &);
+  void _genSWorFSW (const Register &, const LabelInAssembly &);
   void _genSD (const Register &, int, const Register &);
-  void _genStoreToMemoryLocation (const Register &, const MemoryLocation &, const Register &);
+  void _genStoreToMemoryLocation (const Register &, const MemoryLocation &);
   void _genLA (const Register &, const LabelInAssembly &);
   void _genLI (const Register &, int);
   void _genLoadFloatImm (const Register &, float);
@@ -110,7 +113,7 @@ private:
   void _genFCVT_W_S (const Register &, const Register &); // convert float to int
   void _genFCVT_S_W (const Register &, const Register &); // convert int to float
   void _genFMV_W_X (const Register &, const Register &);
-  void _genConvertToBool (const Register &, const Register &, const Register &);
+  void _genConvertToBool (const Register &, const Register &);
   void _genCALL (const LabelInAssembly &);
   void _genRET ();
 
