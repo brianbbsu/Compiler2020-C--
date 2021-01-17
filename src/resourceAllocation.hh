@@ -4,7 +4,6 @@
 
 #include <unordered_map>
 #include <set>
-#include <tuple>
 
 #include "header.hh"
 
@@ -49,23 +48,22 @@ typedef std::unordered_map<Register, RegisterPoolEntry> RegisterPool;
 class RegisterManager;
 
 
-// This type is to avoid the creation of AllocatedRegister on function returning.
-// If an AllocatedRegister is created on function return, it will be destroyed right away, causing freeRegister() being called.
-typedef std::tuple<Register, RegisterManager *> AllocatedRegister_Returned;
-
-
 struct AllocatedRegister {
   Register reg;
   RegisterManager *manager;
-  AllocatedRegister () = default;
-  AllocatedRegister (const AllocatedRegister_Returned &tuple_) : reg{std::get<0>(tuple_)}, manager{std::get<1>(tuple_)} {}
-  ~AllocatedRegister (); // forward declaration
-  operator Register () const { return reg; } // conversion function from AllocatedRegister to Register
-  AllocatedRegister& operator= (const AllocatedRegister_Returned tuple_) {
-    reg = std::get<0>(tuple_);
-    manager = std::get<1>(tuple_);
+  bool isMoved; // prevent destructor of a temporary rvalue from calling manager->freeRegister(*this)
+  AllocatedRegister () : reg{""}, manager{nullptr}, isMoved{false} {}
+  AllocatedRegister (const Register &reg_, RegisterManager *manager_, bool isMoved_) : reg{reg_}, manager{manager_}, isMoved{isMoved_} {}
+  AllocatedRegister (const AllocatedRegister &) = default; // copy constructor
+  AllocatedRegister &operator= (const AllocatedRegister &) = default; // copy assignment operator
+  AllocatedRegister &operator= (AllocatedRegister &&rhs) { // move assignment operator
+    reg = rhs.reg;
+    manager = rhs.manager;
+    rhs.isMoved = true;
     return *this;
   }
+  ~AllocatedRegister (); // forward declaration
+  operator Register () const { return reg; } // conversion function from AllocatedRegister to Register
 };
 
 std::ostream &operator<< (std::ostream &os, const AllocatedRegister &reg); // forward declaration
@@ -153,16 +151,16 @@ private:
 
   std::set<Register> currProcedureUsedRegisters;
 
-  AllocatedRegister_Returned _getRegisterFromPool (RegisterPool &, const std::string &);
+  AllocatedRegister _getRegisterFromPool (RegisterPool &, const std::string &);
 
 public:
   RegisterManager ();
   ~RegisterManager ();
 
-  AllocatedRegister_Returned getSaveIntRegister (const std::string &);
-  AllocatedRegister_Returned getTempIntRegister (const std::string &);
-  AllocatedRegister_Returned getSaveFloatRegister (const std::string &);
-  AllocatedRegister_Returned getTempFloatRegister (const std::string &);
+  AllocatedRegister getSaveIntRegister (const std::string &);
+  AllocatedRegister getTempIntRegister (const std::string &);
+  AllocatedRegister getSaveFloatRegister (const std::string &);
+  AllocatedRegister getTempFloatRegister (const std::string &);
   void freeRegister (const AllocatedRegister &);
 
   void enterProcedure ();

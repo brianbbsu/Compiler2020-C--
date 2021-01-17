@@ -3,7 +3,7 @@
 
 
 AllocatedRegister::~AllocatedRegister () {
-  manager->freeRegister(*this);
+  if (!isMoved) manager->freeRegister(*this);
 }
 
 
@@ -99,13 +99,13 @@ void RegisterManager::leaveProcedure () {
 }
 
 
-AllocatedRegister_Returned RegisterManager::_getRegisterFromPool (RegisterPool &pool, const std::string &debugMsg) {
+AllocatedRegister RegisterManager::_getRegisterFromPool (RegisterPool &pool, const std::string &debugMsg) {
   for (auto & [reg, entry] : pool) {
     if (!entry.inUse) {
       entry.inUse = true;
       entry.debugMsg = debugMsg;
       currProcedureUsedRegisters.emplace(reg);
-      return {entry.reg, this};
+      return {entry.reg, this, false};
     }
   }
 
@@ -114,22 +114,22 @@ AllocatedRegister_Returned RegisterManager::_getRegisterFromPool (RegisterPool &
 }
 
 
-AllocatedRegister_Returned RegisterManager::getSaveIntRegister (const std::string &debugMsg) {
+AllocatedRegister RegisterManager::getSaveIntRegister (const std::string &debugMsg) {
   return _getRegisterFromPool(saveIntRegisters, debugMsg);
 }
 
 
-AllocatedRegister_Returned RegisterManager::getTempIntRegister (const std::string &debugMsg) {
+AllocatedRegister RegisterManager::getTempIntRegister (const std::string &debugMsg) {
   return _getRegisterFromPool(tempIntRegisters, debugMsg);
 }
 
 
-AllocatedRegister_Returned RegisterManager::getSaveFloatRegister (const std::string &debugMsg) {
+AllocatedRegister RegisterManager::getSaveFloatRegister (const std::string &debugMsg) {
   return _getRegisterFromPool(saveFloatRegisters, debugMsg);
 }
 
 
-AllocatedRegister_Returned RegisterManager::getTempFloatRegister (const std::string &debugMsg) {
+AllocatedRegister RegisterManager::getTempFloatRegister (const std::string &debugMsg) {
   return _getRegisterFromPool(tempFloatRegisters, debugMsg);
 }
 
