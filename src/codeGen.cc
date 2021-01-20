@@ -820,8 +820,8 @@ void CodeGeneration::genFunctionPrologue (const LabelInAssembly &funcLabel) {
   _genSD(REG_FP, -8, REG_SP);
   _genADDI(REG_FP, REG_SP, -8);
   _genADDI(REG_SP, REG_SP, -8); // -8 instead of -16 since sp should point at the last saved register after subtracted by frameSize, not point at **empty**
-  _genLWorFLW(REG_T1, makeFrameSizeLabel(funcLabel));
-  _genSUB(REG_SP, REG_SP, REG_T1);
+  _genLWorFLW(REG_RA, makeFrameSizeLabel(funcLabel));
+  _genSUB(REG_SP, REG_SP, REG_RA);
 
   // step 2: store registers
   // implemented in genFunctionEpilogue()
